@@ -1,0 +1,169 @@
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Dense, LSTM, Dropout, Reshape
+from spektral.layers import GCNConv
+from spektral.data import Graph, Dataset
+from spektral.transforms import AdjToSpTensor
+import matplotlib.pyplot as plt
+
+# Ensure spektral is installed
+try:
+    from spektral.layers import GCNConv
+except ModuleNotFoundError:
+    print("The 'spektral' library is not installed. Installing it now...")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "spektral"])
+    from spektral.layers import GCNConv
+
+# Define a custom dataset for the network
+class TNFR1Dataset(Dataset):
+    def __init__(self, edges, **kwargs):
+        self.edges = edges
+        super().__init__(**kwargs)
+
+    def read(self):
+        # Create adjacency matrix
+        nodes = list(set([edge[0] for edge in self.edges] + [edge[1] for edge in self.edges]))
+        num_nodes = len(nodes)
+        adj = np.zeros((num_nodes, num_nodes))
+        node_to_idx = {node: i for i, node in enumerate(nodes)}
+
+        for edge in self.edges:
+            src, dst, _ = edge
+            adj[node_to_idx[src], node_to_idx[dst]] = 1
+
+        # Node features (e.g., one-hot encoding or random features)
+        x = np.eye(num_nodes)  # One-hot encoding for simplicity
+
+        # Create graph
+        graph = Graph(x=x, a=adj)
+        return [graph]
+
+# Define the RCNN model with GCN and LSTM
+def build_rcnn_model(num_nodes, num_features, num_classes):
+    # Inputs
+    x_in = Input(shape=(num_nodes, num_features))
+    a_in = Input(shape=(num_nodes, num_nodes))
+
+    # GCN for spatial feature extraction
+    gcn1 = GCNConv(32, activation='relu')([x_in, a_in])
+    gcn2 = GCNConv(32, activation='relu')([gcn1, a_in])
+    gcn_out = tf.reduce_mean(gcn2, axis=1)  # Global mean pooling
+
+    # Reshape for LSTM (temporal modeling)
+    lstm_input = Reshape((1, -1))(gcn_out)
+    lstm_out = LSTM(64, return_sequences=False)(lstm_input)
+
+    # Fully connected layers
+    dense1 = Dense(64, activation='relu')(lstm_out)
+    dropout = Dropout(0.5)(dense1)
+    output = Dense(num_classes, activation='softmax')(dropout)
+
+    # Build model
+    model = Model(inputs=[x_in, a_in], outputs=output)
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+# Prepare dataset with the complete network
+edges = [
+    ("p53", "p53-p", "interacts_with"),
+    ("p53 mRNA", "p53", "interacts_with"),
+    ("p53-p", "Mdm2 mRNA", "interacts_with"),
+    ("Mdm2 cyt", "Mdm2-p cyt", "interacts_with"),
+    ("Mdm2 mRNA", "Mdm2 cyt", "interacts_with"),
+    ("Mdm2-p cyt", "Mdm2-p nuc", "interacts_with"),
+    ("DSB", "ATM-p", "interacts_with"),
+    ("ATM mRNA", "ATM", "interacts_with"),
+    ("p53-p", "ATM mRNA", "interacts_with"),
+    ("ATMa-p", "p53-p", "interacts_with"),
+    ("ATMa-p", "AKT-p", "interacts_with"),
+    ("ATMa-p", "KSRP-p", "interacts_with"),
+    ("ATMa-p", "CREB", "interacts_with"),
+    ("ATMa-p", "Chk2-p", "interacts_with"),
+    ("ATM-p", "MRN-p", "interacts_with"),
+    ("DSB", "MRN-p", "interacts_with"),
+    ("CREB", "ATM mRNA", "interacts_with"),
+    ("MRN-p", "ATMa-p", "interacts_with"),
+    ("CREB", "Wip1 mRNA", "interacts_with"),
+    ("p53-p", "Chk2 mRNA", "interacts_with"),
+    ("p53-p", "Bax mRNA", "interacts_with"),
+    ("p53-p", "p21 mRNA", "interacts_with"),
+    ("p53-p", "PTEN mRNA", "interacts_with"),
+    ("p53-p", "Wip1 mRNA", "interacts_with"),
+    ("Wip1 mRNA", "Wip1", "interacts_with"),
+    ("pre-miR-16", "miR-16", "interacts_with"),
+    ("KSRP-p", "pre-miR-16", "interacts_with"),
+    ("Chk2 mRNA", "Chk2", "interacts_with"),
+    ("Chk2-p", "p53-p", "interacts_with"),
+    ("Bax mRNA", "Bax", "interacts_with"),
+    ("Bax", "apoptosis", "interacts_with"),
+    ("p21 mRNA", "p21", "interacts_with"),
+    ("p21", "cell cycle arrest", "interacts_with"),
+    ("IR", "DSB", "interacts_with"),
+    ("p53-p", "PTEN mRNA", "interacts_with"),
+    ("PTEN mRNA", "PTEN", "interacts_with"),
+    ("PTEN", "PIP2", "interacts_with"),
+    ("PIP2", "PIP3", "interacts_with"),
+    ("PIP3", "AKT-p", "interacts_with"),
+    ("AKT-p", "Mdm2-p cyt", "interacts_with"),
+    ("TNFa", "TNFR1", "interacts_with"),
+    ("TNFR1", "IKKKa", "interacts_with"),
+    ("IKKKa", "IKKa", "interacts_with"),
+    ("A20 mRNA", "A20 cyt", "interacts_with"),
+    ("IKKa", "NFkB", "interacts_with"),
+    ("NFkB", "IkBa mRNA", "interacts_with"),
+    ("NFkB", "A20 mRNA", "interacts_with"),
+    ("NFkB", "p53 mRNA", "interacts_with"),
+    ("IkBa mRNA", "IkBa", "interacts_with"),
+    ("NFkB", "Wip1 mRNA", "interacts_with")
+]
+
+dataset = TNFR1Dataset(edges, transforms=AdjToSpTensor())
+graph = dataset[0]
+
+# Convert sparse adjacency matrix to dense using TensorFlow
+adj_dense = tf.sparse.to_dense(graph.a).numpy()
+
+# Model parameters
+num_nodes = graph.x.shape[0]
+num_features = graph.x.shape[1]
+num_classes = 2  # Binary classification for simplicity
+
+# Build and train the model
+model = build_rcnn_model(num_nodes, num_features, num_classes)
+model.summary()
+
+# Prepare dummy data for training
+x_train = np.expand_dims(graph.x, axis=0)
+a_train = np.expand_dims(adj_dense, axis=0)
+y_train = np.array([[1, 0]])  # Example labels
+
+# Train the model
+history = model.fit([x_train, a_train], y_train, epochs=50, batch_size=1, verbose=1)
+
+# Evaluate the model
+loss, accuracy = model.evaluate([x_train, a_train], y_train)
+print(f"Test Accuracy: {accuracy * 100:.2f}%")
+
+# Extract GCN layer outputs to identify key nodes
+gcn_output = Model(inputs=model.input, outputs=model.get_layer('gcn_conv_1').output)
+node_importance = np.mean(gcn_output.predict([x_train, a_train]), axis=0)
+
+# Rank nodes by importance
+nodes = list(set([edge[0] for edge in edges] + [edge[1] for edge in edges]))
+node_importance_scores = {node: score for node, score in zip(nodes, node_importance)}
+sorted_nodes = sorted(node_importance_scores.items(), key=lambda x: x[1], reverse=True)
+
+print("Top 5 Key Nodes:")
+for node, score in sorted_nodes[:5]:
+    print(f"{node}: {score:.4f}")
+
+# Visualize node importance
+plt.figure(figsize=(10, 6))
+plt.bar(range(len(sorted_nodes)), [score for _, score in sorted_nodes])
+plt.xticks(range(len(sorted_nodes)), [node for node, _ in sorted_nodes], rotation=90)
+plt.xlabel("Nodes")
+plt.ylabel("Importance Score")
+plt.title("Node Importance Scores")
+plt.show()
