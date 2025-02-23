@@ -1,0 +1,133 @@
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, roc_auc_score, classification_report
+from imblearn.over_sampling import SMOTE
+import shap
+from lime import lime_tabular
+import matplotlib.pyplot as plt
+import seaborn as sns
+from aif360.metrics import ClassificationMetric
+from aif360.algorithms.inprocessing import AdversarialDebiasing
+
+# Load the dataset
+file_path = r"C:\Users\Ruby Khan\Downloads\TCGA.ACC.sampleMap_ACC_clinicalMatrix"
+clinical_data = pd.read_csv(file_path, sep='\t')
+
+# Display the first few rows and column names
+print("First few rows of the dataset:")
+print(clinical_data.head())
+print("\nColumn names:")
+print(clinical_data.columns)
+
+# Derive the 'vital_status' column
+clinical_data['vital_status'] = clinical_data.apply(
+    lambda row: 'DECEASED' if pd.notnull(row['days_to_death']) else 'ALIVE', axis=1
+)
+
+# Check the distribution of the target variable
+print("\nTarget variable distribution:")
+print(clinical_data['vital_status'].value_counts())
+
+# Define numerical and categorical features
+numerical_features = ['age_at_initial_pathologic_diagnosis']  # Add other numerical columns if available
+categorical_features = ['gender']  # Replace with correct column names
+
+# Impute missing values for numerical features
+imputer = SimpleImputer(strategy='median')
+clinical_data[numerical_features] = imputer.fit_transform(clinical_data[numerical_features])
+
+# Impute missing values for categorical features
+imputer = SimpleImputer(strategy='most_frequent')
+clinical_data[categorical_features] = imputer.fit_transform(clinical_data[categorical_features])
+
+# One-hot encode categorical variables
+encoder = OneHotEncoder(sparse_output=False, drop='first')
+encoded_features = encoder.fit_transform(clinical_data[categorical_features])
+encoded_df = pd.DataFrame(encoded_features, columns=encoder.get_feature_names_out(categorical_features))
+
+# Combine encoded features with the original dataset
+clinical_data = pd.concat([clinical_data, encoded_df], axis=1)
+clinical_data.drop(categorical_features, axis=1, inplace=True)
+
+# Normalize numerical features
+scaler = StandardScaler()
+clinical_data[numerical_features] = scaler.fit_transform(clinical_data[numerical_features])
+
+# Define the target variable
+target_column = 'vital_status'
+
+# Separate features (X) and target (y)
+X = clinical_data.select_dtypes(include=['number'])  # Select only numeric columns
+y = clinical_data[target_column]
+
+# Check for missing values in X and y
+print("\nMissing values in X:", X.isnull().sum().sum())
+print("Missing values in y:", y.isnull().sum())
+
+# Drop rows with missing values in X or y (if any)
+X = X.dropna()
+y = y[X.index]  # Ensure y aligns with X after dropping rows
+
+# Check the distribution of the target variable
+print("\nTarget variable distribution after preprocessing:")
+print(y.value_counts())
+
+# Check if the target variable has at least two classes
+if len(y.unique()) < 2:
+    print("\nError: The target variable 'y' has only one class. SMOTE requires at least two classes.")
+    print("Please ensure your dataset contains at least two classes for the target variable.")
+else:
+    # Apply SMOTE to balance the dataset
+    smote = SMOTE(random_state=42)
+    X_resampled, y_resampled = smote.fit_resample(X, y)
+
+    # Split the data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
+
+    # Train a Random Forest model
+    model = RandomForestClassifier(random_state=42)
+    model.fit(X_train, y_train)
+
+    # Evaluate the model
+    y_pred = model.predict(X_test)
+    print("\nModel Evaluation:")
+    print("Accuracy:", accuracy_score(y_test, y_pred))
+    print("ROC-AUC:", roc_auc_score(y_test, model.predict_proba(X_test)[:, 1]))
+    print("Classification Report:\n", classification_report(y_test, y_pred))
+
+    # Fairness Evaluation
+    print("\nFairness Evaluation:")
+    # Example: Disparate Impact
+    metric = ClassificationMetric(y_test, y_pred, privileged_groups=[{'gender_1': 1}], unprivileged_groups=[{'gender_1': 0}])
+    print("Disparate Impact:", metric.disparate_impact())
+
+    # Explainability using SHAP
+    print("\nExplainability using SHAP:")
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X_test)
+    shap.summary_plot(shap_values, X_test)
+
+    # Explainability using LIME
+    print("\nExplainability using LIME:")
+    explainer = lime_tabular.LimeTabularExplainer(X_train.values, feature_names=X.columns, class_names=['ALIVE', 'DECEASED'])
+    exp = explainer.explain_instance(X_test.iloc[0], model.predict_proba, num_features=5)
+    exp.show_in_notebook()
+
+    # Visualization: Feature Analysis
+    print("\nVisualization: Feature Analysis")
+    sns.boxplot(x=y_test, y=X_test['age_at_initial_pathologic_diagnosis'])
+    plt.title("Age Distribution by Vital Status")
+    plt.show()
+
+    # Save the processed dataset
+    processed_data = pd.concat([X_resampled, y_resampled], axis=1)
+    processed_data.to_csv('processed_clinical_data.csv', index=False)
+
+    # Save the trained model
+    import joblib
+    joblib.dump(model, 'cancer_survival_model.pkl')
