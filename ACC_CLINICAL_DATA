@@ -1,0 +1,74 @@
+import pandas as pd
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from imblearn.over_sampling import SMOTE
+
+# Load the dataset
+file_path = r"C:\Users\Ruby Khan\Downloads\TCGA.ACC.sampleMap_ACC_clinicalMatrix"
+clinical_data = pd.read_csv(file_path, sep='\t')
+
+# Derive the 'vital_status' column
+clinical_data['vital_status'] = clinical_data.apply(
+    lambda row: 'DECEASED' if pd.notnull(row['days_to_death']) else 'ALIVE', axis=1
+)
+
+# Display the first few rows and column names
+print(clinical_data.head())
+print(clinical_data.columns)
+
+# Define numerical and categorical features with correct column names
+numerical_features = ['age_at_initial_pathologic_diagnosis']  # Add other numerical columns if available
+categorical_features = ['gender']  # Replace with correct column names
+
+# Impute missing values for numerical features
+imputer = SimpleImputer(strategy='median')
+clinical_data[numerical_features] = imputer.fit_transform(clinical_data[numerical_features])
+
+# Impute missing values for categorical features
+imputer = SimpleImputer(strategy='most_frequent')
+clinical_data[categorical_features] = imputer.fit_transform(clinical_data[categorical_features])
+
+# One-hot encode categorical variables
+encoder = OneHotEncoder(sparse_output=False, drop='first')  # Updated for scikit-learn >= 1.3
+encoded_features = encoder.fit_transform(clinical_data[categorical_features])
+encoded_df = pd.DataFrame(encoded_features, columns=encoder.get_feature_names_out(categorical_features))
+
+# Combine encoded features with the original dataset
+clinical_data = pd.concat([clinical_data, encoded_df], axis=1)
+clinical_data.drop(categorical_features, axis=1, inplace=True)
+
+# Normalize numerical features
+scaler = StandardScaler()
+clinical_data[numerical_features] = scaler.fit_transform(clinical_data[numerical_features])
+
+# Define the target variable
+target_column = 'vital_status'
+
+# Separate features (X) and target (y)
+X = clinical_data.select_dtypes(include=['number'])  # Select only numeric columns
+y = clinical_data[target_column]
+
+# Check for missing values in X and y
+print("Missing values in X:", X.isnull().sum().sum())
+print("Missing values in y:", y.isnull().sum())
+
+# Drop rows with missing values in X or y (if any)
+X = X.dropna()
+y = y[X.index]  # Ensure y aligns with X after dropping rows
+
+# Check the distribution of the target variable
+print("Target variable distribution:")
+print(y.value_counts())
+
+# Check if the target variable has at least two classes
+if len(y.unique()) < 2:
+    print("Error: The target variable 'y' has only one class. SMOTE requires at least two classes.")
+    print("Please ensure your dataset contains at least two classes for the target variable.")
+else:
+    # Apply SMOTE to balance the dataset
+    smote = SMOTE(random_state=42)
+    X_resampled, y_resampled = smote.fit_resample(X, y)
+
+    # Save the processed dataset
+    processed_data = pd.concat([X_resampled, y_resampled], axis=1)
+    processed_data.to_csv('processed_clinical_data.csv', index=False)
