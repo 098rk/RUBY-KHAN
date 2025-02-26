@@ -1,0 +1,85 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
+from scipy.spatial.distance import pdist
+from collections import defaultdict
+
+# Load PCA Data
+pca_file_path = "D:\\ProjectFiles\\Geeks\\saptial\\Parent_Visium_Human_OvarianCancer_analysis\\analysis\\pca\\10_components\\components.csv"
+df_pca = pd.read_csv(pca_file_path)
+
+# Extract Principal Components
+df_pca.set_index("PC", inplace=True)
+explained_variance = np.var(df_pca, axis=1)
+explained_variance_ratio = explained_variance / np.sum(explained_variance)
+
+# Plot Explained Variance Ratio
+plt.figure(figsize=(8, 5))
+plt.plot(df_pca.index, explained_variance_ratio, marker='o', linestyle='-')
+plt.xlabel("Principal Component")
+plt.ylabel("Explained Variance Ratio")
+plt.title("Explained Variance by Principal Component")
+plt.grid()
+plt.show()
+
+# Compute Correlation of Top 5 PCs
+top_pc_indices = [8, 9, 7, 4, 6]
+top_pc_data = df_pca.iloc[top_pc_indices].T
+correlation_matrix = top_pc_data.corr()
+
+# Heatmap of Correlations
+plt.figure(figsize=(10, 6))
+sns.heatmap(correlation_matrix, annot=True, cmap="coolwarm", fmt=".2f")
+plt.title("Correlation Matrix of Top Principal Components")
+plt.show()
+
+# Load Differential Expression Data
+diffexp_file_path = "D:\\ProjectFiles\\Geeks\\saptial\\Parent_Visium_Human_OvarianCancer_analysis\\analysis\\diffexp\\graphclust\\differential_expression.csv"
+df_diffexp = pd.read_csv(diffexp_file_path)
+
+gene_ids = df_diffexp["Feature ID"]
+log2_fold_changes = df_diffexp.filter(like="Log2 fold change")
+adjusted_p_values = df_diffexp.filter(like="Adjusted p value")
+
+# Identify Significant Genes
+significant_genes = (adjusted_p_values < 0.05).sum(axis=1)
+df_diffexp["Significant Clusters"] = significant_genes
+
+# Top 20 Most Significant Genes
+top_significant_genes = df_diffexp.sort_values(by="Significant Clusters", ascending=False).head(20)
+
+# Heatmap of Log2 Fold Changes
+plt.figure(figsize=(12, 6))
+sns.heatmap(top_significant_genes[log2_fold_changes.columns], annot=True, cmap="coolwarm", center=0)
+plt.title("Log2 Fold Changes of Top 20 Most Significant Genes")
+plt.xlabel("Clusters")
+plt.ylabel("Genes")
+plt.show()
+
+# Hierarchical Clustering for Top 500 Variable Genes
+top_variable_genes = log2_fold_changes.var().sort_values(ascending=False).index[:500]
+log2_fold_changes_reduced = log2_fold_changes[top_variable_genes]
+gene_distances_reduced = pdist(log2_fold_changes_reduced, metric='euclidean')
+gene_linkage_reduced = linkage(gene_distances_reduced, method='ward')
+
+# Plot Dendrogram
+plt.figure(figsize=(15, 6))
+dendrogram(gene_linkage_reduced, leaf_rotation=90, leaf_font_size=8, color_threshold=0.7 * max(gene_linkage_reduced[:, 2]))
+plt.title("Hierarchical Clustering of Top 500 Most Variable Genes")
+plt.xlabel("Genes")
+plt.ylabel("Distance")
+plt.grid(True)
+plt.show()
+
+# Extract Cluster Assignments
+clusters_reduced = fcluster(gene_linkage_reduced, t=5, criterion='maxclust')
+largest_cluster_reduced = pd.Series(clusters_reduced).value_counts().idxmax()
+genes_in_largest_cluster_reduced = log2_fold_changes_reduced.index[pd.Series(clusters_reduced) == largest_cluster_reduced]
+
+# Output Key Results
+print("Top Differentially Expressed Genes:")
+print(log2_fold_changes.abs().mean(axis=1).sort_values(ascending=False).head(10))
+print("\nGenes in Largest Cluster:")
+print(genes_in_largest_cluster_reduced[:10])
