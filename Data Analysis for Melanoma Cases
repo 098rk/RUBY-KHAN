@@ -1,0 +1,599 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from collections import defaultdict
+# Load the dataset
+df = pd.read_csv("C:\\Users\Ruby Khan\\Downloads\\clinical.cohort.2025-03-24\\clinical.tsv", sep='\t')
+
+# Basic dataset info
+print("Dataset Overview:")
+print(f"Number of patients: {df['cases.case_id'].nunique()}")
+print(f"Number of records: {len(df)}")
+
+# Data cleaning - replace '--' and empty strings with NaN
+df.replace(["'--", "--", ""], pd.NA, inplace=True)
+
+# Convert numeric columns
+numeric_cols = ['demographic.age_at_index', 'demographic.days_to_death']
+for col in numeric_cols:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+# Demographic analysis
+print("\nDemographic Analysis:")
+print(df['demographic.gender'].value_counts(dropna=False))
+print("\nRace distribution:")
+print(df['demographic.race'].value_counts(dropna=False))
+
+# Survival analysis
+print("\nVital Status:")
+print(df['demographic.vital_status'].value_counts(dropna=False))
+
+# Age analysis
+if 'demographic.age_at_index' in df.columns:
+    print("\nAge at Diagnosis Statistics:")
+    print(df['demographic.age_at_index'].describe())
+
+    plt.figure(figsize=(8, 6))
+    df['demographic.age_at_index'].dropna().hist(bins=20)
+    plt.title('Age at Diagnosis Distribution')
+    plt.xlabel('Age')
+    plt.ylabel('Number of Patients')
+    plt.show()
+
+# Disease type analysis
+print("\nDisease Types:")
+print(df['cases.disease_type'].value_counts(dropna=False))
+
+# Treatment analysis
+if 'treatments.treatment_type' in df.columns:
+    print("\nTreatment Types:")
+    treatments = df['treatments.treatment_type'].value_counts(dropna=False)
+    print(treatments)
+
+    plt.figure(figsize=(10, 6))
+    treatments.dropna().plot(kind='bar')
+    plt.title('Treatment Types Distribution')
+    plt.ylabel('Number of Treatments')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+# Survival analysis with proper numeric conversion
+if 'demographic.days_to_death' in df.columns:
+    print("\nSurvival Analysis:")
+    # Convert days to years properly
+    df['years_to_death'] = df['demographic.days_to_death'] / 365.25
+
+    print("\nDays to Death Statistics:")
+    print(df['demographic.days_to_death'].describe())
+
+    print("\nYears to Death Statistics:")
+    print(df['years_to_death'].describe())
+
+    # Survival plot
+    plt.figure(figsize=(10, 6))
+    df['years_to_death'].dropna().hist(bins=30)
+    plt.title('Survival Time Distribution (Years)')
+    plt.xlabel('Years to Death')
+    plt.ylabel('Number of Patients')
+    plt.show()
+
+# AJCC Stage analysis
+stage_cols = [col for col in df.columns if 'ajcc' in col.lower() and 'stage' in col.lower()]
+if stage_cols:
+    print("\nAJCC Stage Distribution:")
+    for col in stage_cols:
+        print(f"\n{col}:")
+        print(df[col].value_counts(dropna=False))
+
+# Survival by disease type
+if 'demographic.vital_status' in df.columns and 'cases.disease_type' in df.columns:
+    print("\nSurvival by Disease Type:")
+    survival_by_type = df.groupby('cases.disease_type')['demographic.vital_status'].value_counts()
+    print(survival_by_type)
+
+# Save cleaned data
+output_file = 'cleaned_clinical_data.csv'
+df.to_csv(output_file, index=False)
+print(f"\nCleaned data saved to {output_file}")
+
+
+
+# Set up visualization style
+plt.style.use('seaborn-v0_8')  # Updated style reference
+sns.set_theme(style="whitegrid", palette="husl")
+
+
+def load_and_preprocess(filepath):
+    try:
+        df = pd.read_csv("C:\\Users\\Ruby Khan\\Downloads\\clinical.cohort.2025-03-24\\exposure.tsv", sep='\t')
+    except FileNotFoundError:
+        print(f"Error: File not found at {filepath}")
+        return None
+
+    # Clean data - replace '-- and empty strings with NaN
+    df = df.replace(["'--", ''], pd.NA)
+
+    # Extract meaningful columns (focus on columns with some data)
+    cols_to_keep = [
+        'cases.submitter_id',
+        'exposures.tobacco_smoking_status',
+        'exposures.alcohol_days_per_week',
+        'exposures.alcohol_drinks_per_day',
+        'exposures.pack_years_smoked',
+        'exposures.years_smoked'
+    ]
+
+    # Keep only columns that exist in the dataframe
+    cols_to_keep = [col for col in cols_to_keep if col in df.columns]
+    df = df[cols_to_keep].copy()
+
+    # Convert numeric columns
+    numeric_cols = ['exposures.alcohol_days_per_week', 'exposures.alcohol_drinks_per_day',
+                    'exposures.pack_years_smoked', 'exposures.years_smoked']
+    numeric_cols = [col for col in numeric_cols if col in df.columns]
+
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # Clean smoking status categories
+    if 'exposures.tobacco_smoking_status' in df.columns:
+        df['exposures.tobacco_smoking_status'] = df['exposures.tobacco_smoking_status'].str.strip()
+
+    return df
+
+
+def analyze_smoking_status(df):
+    print("\n" + "=" * 50)
+    print("SMOKING STATUS ANALYSIS")
+    print("=" * 50 + "\n")
+
+    if 'exposures.tobacco_smoking_status' not in df.columns:
+        print("No smoking status data available")
+        return df
+
+    # Basic counts
+    status_counts = df['exposures.tobacco_smoking_status'].value_counts(dropna=False)
+    status_perc = df['exposures.tobacco_smoking_status'].value_counts(normalize=True, dropna=False) * 100
+
+    print("Counts of Smoking Status:")
+    print(status_counts.to_string())
+    print("\nPercentage Distribution:")
+    print(status_perc.round(2).to_string())
+
+    # Visualization
+    plt.figure(figsize=(12, 6))
+    ax = sns.countplot(data=df, y='exposures.tobacco_smoking_status',
+                       order=status_counts.index,
+                       hue='exposures.tobacco_smoking_status',
+                       dodge=False)
+
+    plt.title('Distribution of Tobacco Smoking Status', fontsize=14)
+    plt.xlabel('Count', fontsize=12)
+    plt.ylabel('Smoking Status', fontsize=12)
+
+    # Add percentage annotations
+    total = len(df)
+    for p in ax.patches:
+        percentage = '{:.1f}%'.format(100 * p.get_width() / total)
+        x = p.get_width() + 0.02
+        y = p.get_y() + p.get_height() / 2
+        ax.annotate(percentage, (x, y))
+
+    plt.tight_layout()
+    plt.show()
+
+    # Create simplified smoking categories
+    conditions = [
+        df['exposures.tobacco_smoking_status'].str.contains('Non-Smoker', na=False),
+        df['exposures.tobacco_smoking_status'].str.contains('Current Smoker', na=False),
+        df['exposures.tobacco_smoking_status'].str.contains('Reformed Smoker', na=False),
+        df['exposures.tobacco_smoking_status'].isna()
+    ]
+
+    choices = ['Non-smoker', 'Current smoker', 'Former smoker', 'Unknown']
+    df['smoking_category'] = np.select(conditions, choices, default='Other')
+
+    return df
+
+
+def analyze_alcohol(df):
+    print("\n" + "=" * 50)
+    print("ALCOHOL CONSUMPTION ANALYSIS")
+    print("=" * 50 + "\n")
+
+    alc_cols = ['exposures.alcohol_days_per_week', 'exposures.alcohol_drinks_per_day']
+    alc_data = df[alc_cols].dropna(how='all')
+
+    if len(alc_data) > 0:
+        print(f"Alcohol data available for {len(alc_data)} cases")
+        print("\nSummary statistics:")
+        print(alc_data.describe().round(2))
+
+        # Calculate weekly alcohol consumption
+        alc_data['weekly_drinks'] = (alc_data['exposures.alcohol_days_per_week'] *
+                                     alc_data['exposures.alcohol_drinks_per_day'])
+
+        print("\nWeekly alcohol consumption:")
+        print(alc_data['weekly_drinks'].describe().round(2))
+
+        # Plot alcohol consumption
+        plt.figure(figsize=(12, 6))
+        plt.subplot(1, 2, 1)
+        sns.boxplot(data=alc_data, y='exposures.alcohol_days_per_week')
+        plt.title('Alcohol Days per Week')
+
+        plt.subplot(1, 2, 2)
+        sns.boxplot(data=alc_data, y='exposures.alcohol_drinks_per_day')
+        plt.title('Drinks per Drinking Day')
+
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("No complete alcohol consumption data available")
+
+
+def analyze_smoking_metrics(df):
+    print("\n" + "=" * 50)
+    print("SMOKING METRICS ANALYSIS")
+    print("=" * 50 + "\n")
+
+    if 'smoking_category' not in df.columns:
+        df = analyze_smoking_status(df)
+
+    smoking_metrics = df[['smoking_category', 'exposures.pack_years_smoked', 'exposures.years_smoked']].copy()
+
+    # Only analyze for smokers/former smokers
+    smoking_metrics = smoking_metrics[smoking_metrics['smoking_category'].isin(['Current smoker', 'Former smoker'])]
+
+    if len(smoking_metrics) > 0:
+        # Check if we have any actual data (not all NaN)
+        has_pack_years = smoking_metrics['exposures.pack_years_smoked'].notna().any()
+        has_years_smoked = smoking_metrics['exposures.years_smoked'].notna().any()
+
+        if not has_pack_years and not has_years_smoked:
+            print("No smoking metrics data available (all values missing)")
+            return
+
+        print("Smoking metrics for current and former smokers:")
+
+        if has_pack_years:
+            print("\nPack Years Smoked:")
+            print(smoking_metrics.groupby('smoking_category')['exposures.pack_years_smoked'].describe().round(2))
+        else:
+            print("\nNo pack years data available")
+
+        if has_years_smoked:
+            print("\nYears Smoked:")
+            print(smoking_metrics.groupby('smoking_category')['exposures.years_smoked'].describe().round(2))
+        else:
+            print("\nNo years smoked data available")
+
+        # Only plot if we have data
+        plt.figure(figsize=(12, 6))
+
+        if has_pack_years:
+            plt.subplot(1, 2, 1)
+            sns.boxplot(data=smoking_metrics.dropna(subset=['exposures.pack_years_smoked']),
+                        x='smoking_category',
+                        y='exposures.pack_years_smoked')
+            plt.title('Pack Years by Smoking Status')
+
+        if has_years_smoked:
+            plt.subplot(1, 2, 2)
+            sns.boxplot(data=smoking_metrics.dropna(subset=['exposures.years_smoked']),
+                        x='smoking_category',
+                        y='exposures.years_smoked')
+            plt.title('Years Smoked by Smoking Status')
+
+        if has_pack_years or has_years_smoked:
+            plt.tight_layout()
+            plt.show()
+    else:
+        print("No current or former smokers in dataset")
+
+def analyze_data_completeness(df):
+    print("\n" + "=" * 50)
+    print("DATA COMPLETENESS ANALYSIS")
+    print("=" * 50 + "\n")
+
+    completeness = df.notna().mean().sort_values(ascending=False) * 100
+    print("Percentage of non-missing values by column:")
+    print(completeness.round(2).to_string())
+
+    # Plot completeness
+    plt.figure(figsize=(10, 6))
+    completeness.plot(kind='barh')
+    plt.title('Data Completeness by Column')
+    plt.xlabel('Percentage Complete')
+    plt.xlim(0, 100)
+    plt.grid(True, axis='x', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.show()
+
+
+def main():
+    # Load and preprocess data
+    input_file = "C:\\Users\\Ruby Khan\\Downloads\\clinical.cohort.2025-03-24\\exposure.tsv"
+    df = load_and_preprocess(input_file)
+
+    if df is None:
+        print("Failed to load data. Exiting.")
+        return
+
+    # Perform analyses
+    analyze_data_completeness(df)
+    df = analyze_smoking_status(df)
+    analyze_alcohol(df)
+    analyze_smoking_metrics(df)
+
+    print("\nAnalysis complete!")
+
+
+if __name__ == "__main__":
+    main()
+
+
+# Set up visualization style
+plt.style.use('seaborn-v0_8')
+sns.set_theme(style="whitegrid", palette="husl")
+
+
+def load_and_preprocess(filepath):
+    try:
+        df = pd.read_csv(filepath, sep='\t')
+    except FileNotFoundError:
+        print(f"Error: File not found at {filepath}")
+        return None
+
+    # Clean data - replace '-- and empty strings with NaN
+    df = df.replace(["'--", ''], pd.NA)
+
+    # Clean and standardize the relative_with_cancer_history column
+    if 'family_histories.relative_with_cancer_history' in df.columns:
+        df['family_histories.relative_with_cancer_history'] = (
+            df['family_histories.relative_with_cancer_history'].str.strip().str.lower()
+        )
+
+    return df
+
+
+def analyze_cancer_history(df):
+    print("\n" + "=" * 50)
+    print("FAMILY CANCER HISTORY ANALYSIS")
+    print("=" * 50 + "\n")
+
+    if 'family_histories.relative_with_cancer_history' not in df.columns:
+        print("No family cancer history data available")
+        return
+
+    # Basic counts
+    cancer_history_counts = df['family_histories.relative_with_cancer_history'].value_counts(dropna=False)
+    cancer_history_perc = df['family_histories.relative_with_cancer_history'].value_counts(normalize=True,
+                                                                                           dropna=False) * 100
+
+    print("Family Members with Cancer History:")
+    print(cancer_history_counts.to_string())
+    print("\nPercentage Distribution:")
+    print(cancer_history_perc.round(2).to_string())
+
+    # Visualization
+    plt.figure(figsize=(10, 6))
+    ax = sns.countplot(data=df, y='family_histories.relative_with_cancer_history',
+                       order=cancer_history_counts.index,
+                       hue='family_histories.relative_with_cancer_history',
+                       dodge=False)
+
+    plt.title('Family Members with Cancer History', fontsize=14)
+    plt.xlabel('Count', fontsize=12)
+    plt.ylabel('Cancer History Status', fontsize=12)
+
+    # Add percentage annotations
+    total = len(df)
+    for p in ax.patches:
+        percentage = '{:.1f}%'.format(100 * p.get_width() / total)
+        x = p.get_width() + 0.02
+        y = p.get_y() + p.get_height() / 2
+        ax.annotate(percentage, (x, y))
+
+    plt.tight_layout()
+    plt.show()
+
+
+def analyze_cancer_types(df):
+    print("\n" + "=" * 50)
+    print("CANCER TYPES IN FAMILY MEMBERS")
+    print("=" * 50 + "\n")
+
+    if 'family_histories.relationship_primary_diagnosis' not in df.columns:
+        print("No cancer type data available")
+        return
+
+    # Filter only cases with cancer history
+    cancer_cases = df[df['family_histories.relative_with_cancer_history'] == 'yes']
+
+    if len(cancer_cases) == 0:
+        print("No cases with family cancer history available")
+        return
+
+    # Analyze cancer types
+    cancer_types = cancer_cases['family_histories.relationship_primary_diagnosis'].value_counts(dropna=False)
+    cancer_types_perc = cancer_cases['family_histories.relationship_primary_diagnosis'].value_counts(
+        normalize=True) * 100
+
+    print("Types of Cancer in Family Members:")
+    print(cancer_types.to_string())
+    print("\nPercentage Distribution:")
+    print(cancer_types_perc.round(2).to_string())
+
+    # Visualization
+    plt.figure(figsize=(12, 6))
+    ax = sns.countplot(data=cancer_cases,
+                       y='family_histories.relationship_primary_diagnosis',
+                       order=cancer_types.index,
+                       hue='family_histories.relationship_primary_diagnosis',
+                       dodge=False)
+
+    plt.title('Types of Cancer in Family Members', fontsize=14)
+    plt.xlabel('Count', fontsize=12)
+    plt.ylabel('Cancer Type', fontsize=12)
+
+    # Add percentage annotations
+    total = len(cancer_cases)
+    for p in ax.patches:
+        percentage = '{:.1f}%'.format(100 * p.get_width() / total)
+        x = p.get_width() + 0.02
+        y = p.get_y() + p.get_height() / 2
+        ax.annotate(percentage, (x, y))
+
+    plt.tight_layout()
+    plt.show()
+
+
+def analyze_relationship_types(df):
+    print("\n" + "=" * 50)
+    print("RELATIONSHIP TYPES ANALYSIS")
+    print("=" * 50 + "\n")
+
+    if 'family_histories.relationship_type' not in df.columns:
+        print("No relationship type data available")
+        return
+
+    # Analyze relationship types
+    rel_types = df['family_histories.relationship_type'].value_counts(dropna=False)
+    rel_types_perc = df['family_histories.relationship_type'].value_counts(normalize=True) * 100
+
+    print("Relationship Types of Family Members:")
+    print(rel_types.to_string())
+    print("\nPercentage Distribution:")
+    print(rel_types_perc.round(2).to_string())
+
+    # Visualization
+    plt.figure(figsize=(10, 4))
+    sns.countplot(data=df, x='family_histories.relationship_type')
+    plt.title('Relationship Types of Family Members', fontsize=14)
+    plt.xlabel('Relationship Type', fontsize=12)
+    plt.ylabel('Count', fontsize=12)
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.show()
+
+
+def analyze_data_completeness(df):
+    print("\n" + "=" * 50)
+    print("DATA COMPLETENESS ANALYSIS")
+    print("=" * 50 + "\n")
+
+    completeness = df.notna().mean().sort_values(ascending=False) * 100
+    print("Percentage of non-missing values by column:")
+    print(completeness.round(2).to_string())
+
+    # Plot completeness
+    plt.figure(figsize=(10, 6))
+    completeness.plot(kind='barh')
+    plt.title('Data Completeness by Column', fontsize=14)
+    plt.xlabel('Percentage Complete', fontsize=12)
+    plt.xlim(0, 100)
+    plt.grid(True, axis='x', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.show()
+
+
+def main():
+    # Load and preprocess data
+    input_file = "C:\\Users\\Ruby Khan\\Downloads\\clinical.cohort.2025-03-24\\family_history.tsv"
+    df = load_and_preprocess(input_file)
+
+    if df is None:
+        print("Failed to load data. Exiting.")
+        return
+
+    # Perform analyses
+    analyze_data_completeness(df)
+    analyze_cancer_history(df)
+    analyze_cancer_types(df)
+    analyze_relationship_types(df)
+
+    print("\nAnalysis complete!")
+
+
+if __name__ == "__main__":
+    main()
+
+
+# Load the data
+file_path = "C:/Users/Ruby Khan/Downloads/clinical.cohort.2025-03-24/pathology_detail.tsv"
+df = pd.read_csv(file_path, sep='\t')
+
+# Basic data exploration
+print(f"Dataset shape: {df.shape}")
+print("\nFirst few rows:")
+print(df.head())
+print("\nColumns with most missing data:")
+print(df.isna().mean().sort_values(ascending=False).head(10))
+
+# Project distribution
+project_counts = df['project.project_id'].value_counts()
+print("\nProject distribution:")
+print(project_counts)
+
+plt.figure(figsize=(8, 5))
+project_counts.plot(kind='bar')
+plt.title('Distribution of Cases by Project')
+plt.ylabel('Number of Cases')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+# Breslow thickness analysis (convert to numeric, handling missing values)
+df['breslow'] = pd.to_numeric(df['pathology_details.breslow_thickness'], errors='coerce')
+
+plt.figure(figsize=(10, 6))
+sns.histplot(df['breslow'].dropna(), bins=20, kde=True)
+plt.title('Distribution of Breslow Thickness (mm)')
+plt.xlabel('Breslow Thickness (mm)')
+plt.ylabel('Count')
+plt.show()
+
+# Summary statistics for Breslow thickness
+print("\nBreslow thickness statistics:")
+print(df['breslow'].describe())
+
+# Lymph node analysis for HCMI-CMDC cases
+hcm_df = df[df['project.project_id'] == 'HCMI-CMDC'].copy()
+hcm_df['lymph_nodes_positive'] = pd.to_numeric(hcm_df['pathology_details.lymph_nodes_positive'], errors='coerce')
+hcm_df['lymph_nodes_tested'] = pd.to_numeric(hcm_df['pathology_details.lymph_nodes_tested'], errors='coerce')
+
+plt.figure(figsize=(12, 5))
+plt.subplot(1, 2, 1)
+sns.histplot(hcm_df['lymph_nodes_positive'].dropna(), bins=15)
+plt.title('Positive Lymph Nodes (HCMI-CMDC)')
+
+plt.subplot(1, 2, 2)
+sns.histplot(hcm_df['lymph_nodes_tested'].dropna(), bins=15)
+plt.title('Tested Lymph Nodes (HCMI-CMDC)')
+plt.tight_layout()
+plt.show()
+
+# Lymph node positivity rate
+hcm_df['lymph_node_positivity_rate'] = hcm_df['lymph_nodes_positive'] / hcm_df['lymph_nodes_tested']
+
+plt.figure(figsize=(8, 5))
+sns.histplot(hcm_df['lymph_node_positivity_rate'].dropna(), bins=15)
+plt.title('Lymph Node Positivity Rate (HCMI-CMDC)')
+plt.xlabel('Positive/Tested Ratio')
+plt.show()
+
+# Consistent pathology review analysis
+consistent_review = df['pathology_details.consistent_pathology_review'].value_counts()
+print("\nConsistent pathology review status:")
+print(consistent_review)
+
+plt.figure(figsize=(6, 4))
+consistent_review.plot(kind='bar')
+plt.title('Consistent Pathology Review Status')
+plt.ylabel('Count')
+plt.xticks(rotation=45)
+plt.show()
