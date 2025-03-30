@@ -1,0 +1,194 @@
+import networkx as nx
+import matplotlib.pyplot as plt
+from pyvis.network import Network
+import random
+
+# Expanded p53 signaling network with additional pathway components
+G = nx.DiGraph()
+
+# Core p53 pathway components (expanded)
+p53_nodes = [
+    'p53', 'p53-pS15', 'p53-pS20', 'p53-pS37', 'p53-acK120', 'p53-acK382',
+    'p53-ub', 'p53_mRNA', 'Mdm2', 'Mdm2_mRNA', 'Mdm2-p', 'Mdm4', 'Mdm4_mRNA',
+    'MdmX', 'ATR', 'ATM', 'Chk1', 'Chk2', 'p21', 'p21_mRNA', 'Bax', 'Bax_mRNA',
+    'PUMA', 'NOXA', 'FAS', 'DR5', 'PIDD', 'PIDDosome', 'Caspase2', 'Caspase3',
+    'Caspase6', 'Caspase7', 'Caspase8', 'Caspase9', 'Apaf1', 'Cytochrome_c',
+    'Bcl2', 'BclXL', 'Mcl1', 'Bid', 'Bad', 'Bim', '14-3-3', 'PTEN', 'AKT',
+    'AKT-p', 'PI3K', 'mTOR', 'S6K', '4E-BP1', 'eIF4E', 'Rheb', 'TSC1', 'TSC2',
+    'AMPK', 'LKB1', 'p38', 'JNK', 'ERK', 'MEK', 'Raf', 'Ras', 'SOS', 'Grb2',
+    'EGFR', 'HER2', 'IGF1R', 'IRS1', 'FOXO', 'FOXO-p', 'NF-kB', 'IKK', 'IKB',
+    'TNF', 'TNFR', 'FADD', 'TRADD', 'RIP1', 'CYLD', 'A20', 'Wip1', 'Wip1_mRNA',
+    'ARF', 'ARF_mRNA', 'E2F1', 'E2F1_mRNA', 'Rb', 'Rb-p', 'CyclinD1', 'CyclinE',
+    'CDK4', 'CDK6', 'CDK2', 'CDC25A', 'CDC25B', 'CDC25C', 'WEE1', 'PLK1', 'AuroraA',
+    'AuroraB', 'Survivin', 'BIRC5', 'XIAP', 'BRCA1', 'BRCA2', 'RAD51', 'FANCD2',
+    'FANCA', 'FANCC', 'FANCE', 'FANCF', 'FANCG', 'FANCL', 'ATM_mRNA', 'ATR_mRNA',
+    'Chk1_mRNA', 'Chk2_mRNA', 'DNA_damage', 'DSB', 'SSB', 'ROS', 'H2AX', 'H2AX-p',
+    '53BP1', 'NBS1', 'MRE11', 'RAD50', 'APC', 'APC_mRNA', 'CCNB1', 'CCNB1_mRNA',
+    'CCNA2', 'CCNA2_mRNA', 'CDC20', 'CDC20_mRNA', 'CDH1', 'CDH1_mRNA', 'SPRY2',
+    'DUSP1', 'DUSP6', 'MKP1', 'MKP3', 'GADD45', 'GADD45_mRNA', 'PERP', 'PERP_mRNA',
+    'apoptosis', 'senescence', 'cell_cycle_arrest', 'DNA_repair', 'autophagy',
+    'metastasis', 'angiogenesis', 'chemoresistance'
+]
+
+# Add all nodes
+G.add_nodes_from(p53_nodes)
+
+# Expanded interactions (more complex and interconnected)
+interactions = [
+    # Core p53 modifications
+    ('ATM', 'p53-pS15', 'phosphorylation'), ('ATR', 'p53-pS15', 'phosphorylation'),
+    ('Chk1', 'p53-pS20', 'phosphorylation'), ('Chk2', 'p53-pS20', 'phosphorylation'),
+    ('p38', 'p53-pS37', 'phosphorylation'), ('JNK', 'p53-pS37', 'phosphorylation'),
+    ('p300', 'p53-acK120', 'acetylation'), ('p300', 'p53-acK382', 'acetylation'),
+    ('Mdm2', 'p53-ub', 'ubiquitination'), ('MdmX', 'p53-ub', 'ubiquitination'),
+
+    # DNA damage response (expanded)
+    ('DNA_damage', 'ATM', 'activation'), ('DNA_damage', 'ATR', 'activation'),
+    ('DSB', 'MRE11-RAD50-NBS1', 'recruitment'), ('MRE11-RAD50-NBS1', 'ATM', 'activation'),
+    ('SSB', 'ATRIP', 'recruitment'), ('ATRIP', 'ATR', 'activation'),
+    ('ATM', 'Chk2', 'phosphorylation'), ('ATR', 'Chk1', 'phosphorylation'),
+    ('H2AX', '53BP1', 'recruitment'), ('53BP1', 'ATM', 'activation'),
+
+    # Cell cycle regulation (expanded)
+    ('p53-pS15', 'p21', 'transcription'), ('p21', 'CDK4/6', 'inhibition'),
+    ('p21', 'CDK2', 'inhibition'), ('p53-pS15', 'GADD45', 'transcription'),
+    ('GADD45', 'CDK1', 'inhibition'), ('p53-pS15', '14-3-3', 'transcription'),
+    ('14-3-3', 'CDC25C', 'sequestration'), ('CDC25C', 'CDK1', 'dephosphorylation'),
+
+    # Apoptosis pathways (expanded)
+    ('p53-pS15', 'Bax', 'transcription'), ('p53-pS15', 'PUMA', 'transcription'),
+    ('p53-pS15', 'NOXA', 'transcription'), ('Bax', 'Cytochrome_c', 'release'),
+    ('Cytochrome_c', 'Apaf1', 'binding'), ('Apaf1', 'Caspase9', 'activation'),
+    ('Caspase9', 'Caspase3', 'cleavage'), ('Caspase3', 'PARP', 'cleavage'),
+    ('FAS', 'FADD', 'recruitment'), ('FADD', 'Caspase8', 'activation'),
+    ('Caspase8', 'Bid', 'cleavage'), ('tBid', 'Bax', 'activation'),
+
+    # Cross-talk with other pathways (new additions)
+    ('EGFR', 'Ras', 'activation'), ('Ras', 'PI3K', 'activation'),
+    ('PI3K', 'AKT', 'activation'), ('AKT', 'Mdm2', 'phosphorylation'),
+    ('AKT', 'FOXO', 'phosphorylation'), ('FOXO', 'Bim', 'transcription'),
+    ('Ras', 'Raf', 'activation'), ('Raf', 'MEK', 'activation'),
+    ('MEK', 'ERK', 'activation'), ('ERK', 'p90RSK', 'activation'),
+    ('p90RSK', 'Mdm2', 'phosphorylation'), ('ERK', 'Elk1', 'phosphorylation'),
+    ('TNF', 'TNFR', 'binding'), ('TNFR', 'TRADD', 'recruitment'),
+    ('TRADD', 'FADD', 'recruitment'), ('TRADD', 'RIP1', 'recruitment'),
+    ('RIP1', 'IKK', 'activation'), ('IKK', 'IkB', 'phosphorylation'),
+    ('IkB', 'NF-kB', 'inhibition'), ('NF-kB', 'Mdm2', 'transcription'),
+
+    # Feedback loops (new additions)
+    ('Wip1', 'ATM', 'dephosphorylation'), ('Wip1', 'Chk2', 'dephosphorylation'),
+    ('p53-pS15', 'Wip1', 'transcription'), ('Mdm2', 'p53', 'ubiquitination'),
+    ('ARF', 'Mdm2', 'inhibition'), ('p53-pS15', 'ARF', 'transcription'),
+    ('E2F1', 'ARF', 'transcription'), ('E2F1', 'p53', 'apoptosis'),
+
+    # Metabolic regulation (new additions)
+    ('AMPK', 'p53', 'phosphorylation'), ('LKB1', 'AMPK', 'phosphorylation'),
+    ('p53-pS15', 'TIGAR', 'transcription'), ('TIGAR', 'ROS', 'reduction'),
+    ('p53-pS15', 'SCO2', 'transcription'), ('SCO2', 'OXPHOS', 'regulation'),
+
+    # Phenotypic outcomes
+    ('Caspase3', 'apoptosis', 'execution'), ('p21', 'cell_cycle_arrest', 'induction'),
+    ('p53-pS15', 'senescence', 'induction'), ('NF-kB', 'chemoresistance', 'promotion'),
+    ('VEGF', 'angiogenesis', 'promotion'), ('MMP2', 'metastasis', 'promotion')
+]
+
+# Add all edges with random weights to create initial disorganization
+for source, target, interaction in interactions:
+    G.add_edge(source, target, weight=random.uniform(0.5, 2.0), interaction=interaction)
+
+# Add random edges between nodes to increase complexity
+all_nodes = list(G.nodes())
+for _ in range(200):  # Add 200 random edges
+    source = random.choice(all_nodes)
+    target = random.choice(all_nodes)
+    if source != target and not G.has_edge(source, target):
+        G.add_edge(source, target, weight=random.uniform(0.1, 0.5),
+                   interaction='random_crosstalk')
+
+# Calculate network statistics
+print("\nExpanded Network Statistics:")
+print(f"Total nodes: {G.number_of_nodes()}")
+print(f"Total edges: {G.number_of_edges()}")
+print(f"Average degree: {sum(dict(G.degree()).values()) / len(G):.2f}")
+
+if nx.is_weakly_connected(G):
+    print(f"Network diameter: {nx.diameter(G.to_undirected())}")
+else:
+    print("Network contains disconnected components - showing component sizes:")
+    for i, comp in enumerate(nx.weakly_connected_components(G), 1):
+        print(f"Component {i}: {len(comp)} nodes")
+
+print(f"Average clustering: {nx.average_clustering(G.to_undirected()):.3f}")
+
+# Visualization with matplotlib (will be messy initially)
+plt.figure(figsize=(30, 30))
+pos = nx.spring_layout(G, k=0.3, iterations=50, seed=42)
+
+# Color nodes by function type
+node_colors = []
+for node in G.nodes():
+    if '_mRNA' in node:
+        node_colors.append('orange')
+    elif 'p53' in node:
+        node_colors.append('red')
+    elif '-p' in node or '-ac' in node or '-ub' in node:
+        node_colors.append('lime')
+    elif node in ['apoptosis', 'senescence', 'cell_cycle_arrest',
+                  'DNA_repair', 'metastasis', 'angiogenesis']:
+        node_colors.append('purple')
+    elif any(prot in node for prot in ['Caspase', 'Bax', 'Bcl', 'PUMA', 'NOXA']):
+        node_colors.append('pink')
+    elif any(prot in node for prot in ['CDK', 'Cyclin', 'Rb', 'E2F']):
+        node_colors.append('yellow')
+    else:
+        node_colors.append('skyblue')
+
+nx.draw(G, pos, with_labels=True, node_size=800,
+        node_color=node_colors, font_size=6,
+        edge_color='gray', width=0.5, arrowsize=10,
+        arrowstyle='->')
+
+plt.title("Expanded p53 Signaling Network with Cross-Pathway Connections", size=20)
+plt.tight_layout()
+plt.savefig('expanded_p53_network.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+# Create interactive visualization
+net = Network(notebook=True, height="1200px", width="100%", directed=True, bgcolor='#222222')
+net.from_nx(G)
+
+# Customize node appearance
+for node in net.nodes:
+    if '_mRNA' in node['label']:
+        node['color'] = 'orange'
+        node['shape'] = 'diamond'
+    elif 'p53' in node['label']:
+        node['color'] = 'red'
+        node['size'] = 25
+    elif '-p' in node['label'] or '-ac' in node['label'] or '-ub' in node['label']:
+        node['color'] = 'lime'
+        node['shape'] = 'triangle'
+    elif node['label'] in ['apoptosis', 'senescence', 'cell_cycle_arrest']:
+        node['color'] = 'purple'
+        node['shape'] = 'star'
+    elif any(prot in node['label'] for prot in ['Caspase', 'Bax', 'Bcl']):
+        node['color'] = 'pink'
+    elif any(prot in node['label'] for prot in ['CDK', 'Cyclin']):
+        node['color'] = 'yellow'
+    else:
+        node['color'] = 'skyblue'
+
+    node['font'] = {'size': 8, 'color': 'white'}
+
+# Customize edge appearance
+for edge in net.edges:
+    edge['width'] = edge['weight']
+    edge['color'] = '#aaaaaa'
+    edge['title'] = edge['interaction']
+
+net.show_buttons(filter_=['physics', 'nodes', 'edges'])
+net.save_graph('interactive_expanded_p53_network.html')
+
+print("\nVisualizations created:")
+print("- Static visualization saved as 'expanded_p53_network.png'")
+print("- Interactive visualization saved as 'interactive_expanded_p53_network.html'")
