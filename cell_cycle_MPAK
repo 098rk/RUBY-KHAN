@@ -1,0 +1,154 @@
+import networkx as nx
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+
+# Set global style parameters
+plt.rcParams.update({
+    'font.size': 8,  # Reduced font size
+    'font.family': 'Arial',
+    'axes.labelsize': 10,
+    'axes.titlesize': 12,
+    'figure.facecolor': 'white',
+    'figure.dpi': 300,
+    'savefig.dpi': 300,
+    'savefig.bbox': 'tight',
+    'savefig.transparent': False
+})
+
+
+# ==============================================
+# FINAL CELL CYCLE NETWORK
+# ==============================================
+def create_cell_cycle_network():
+    G = nx.DiGraph()
+
+    edges = [
+        ('Cyclin D', 'CDK4/6', {'type': 'complex', 'color': '#FF7F0E'}),
+        ('Cyclin E', 'CDK2', {'type': 'complex', 'color': '#FF7F0E'}),
+        ('Cyclin A', 'CDK2', {'type': 'complex', 'color': '#FF7F0E'}),
+        ('Cyclin B', 'CDK1', {'type': 'complex', 'color': '#FF7F0E'}),
+        ('Cyclin D/CDK4/6', 'Rb', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('Rb', 'E2F', {'type': 'inhibition', 'color': '#D62728'}),
+        ('Phosphorylated Rb', 'E2F', {'type': 'release', 'color': '#2CA02C'}),
+        ('E2F', 'DNA replication', {'type': 'transcription', 'color': '#9467BD'}),
+        ('DNA damage', 'ATM/ATR', {'type': 'activation', 'color': '#2CA02C'}),
+        ('ATM/ATR', 'CHK1/CHK2', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('CHK1/CHK2', 'CDK1', {'type': 'inhibition', 'color': '#D62728'}),
+        ('CHK1/CHK2', 'CDK2', {'type': 'inhibition', 'color': '#D62728'}),
+        ('ATM/ATR', 'p53', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('p53', 'p21', {'type': 'transcription', 'color': '#9467BD'}),
+        ('p21', 'CDK4/6', {'type': 'inhibition', 'color': '#D62728'}),
+        ('p21', 'CDK2', {'type': 'inhibition', 'color': '#D62728'}),
+        ('Spindle checkpoint', 'Anaphase', {'type': 'regulation', 'color': '#8C564B'}),
+        ('Mitotic Exit', 'Mitosis Exit', {'type': 'regulation', 'color': '#8C564B'}),
+        ('Growth factors', 'Cyclin D', {'type': 'induction', 'color': '#17BECF'})
+    ]
+
+    G.add_edges_from([(u, v) for u, v, d in edges])
+    return G, edges
+
+
+# ==============================================
+# FINAL MAPK NETWORK
+# ==============================================
+def create_mapk_network():
+    G = nx.DiGraph()
+
+    edges = [
+        ('EGFR', 'RAS', {'type': 'activation', 'color': '#2CA02C'}),
+        ('RAS', 'RAF', {'type': 'activation', 'color': '#2CA02C'}),
+        ('RAF', 'MEK', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('MEK', 'ERK', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('ERK', 'RSK', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('RSK', 'MYC', {'type': 'stabilization', 'color': '#8C564B'}),
+        ('EGFR', 'PI3K', {'type': 'activation', 'color': '#2CA02C'}),
+        ('PI3K', 'AKT', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('AKT', 'mTOR', {'type': 'activation', 'color': '#2CA02C'}),
+        ('mTOR', 'p70S6K', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('ERK', 'CREB', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('ERK', 'ELK1', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('JNK', 'c-Jun', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('p38', 'ATF2', {'type': 'phosphorylation', 'color': '#1F77B4'}),
+        ('RAS', 'NF-κB', {'type': 'activation', 'color': '#2CA02C'})
+    ]
+
+    G.add_edges_from([(u, v) for u, v, d in edges])
+    return G, edges
+
+
+# ==============================================
+# VISUALIZATION FUNCTION
+# ==============================================
+def draw_network(G, edges, title, filename, figsize=(14, 10), node_size=800):
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Position nodes with improved spacing
+    pos = nx.spring_layout(G, k=0.8, seed=42)  # Reduced k for tighter layout
+
+    # Node coloring
+    node_colors = []
+    for node in G.nodes():
+        if 'Cyclin' in node or 'CDK' in node:
+            node_colors.append('#FF7F0E')  # Orange
+        elif node in ['EGFR', 'RAS', 'RAF', 'MEK', 'ERK']:
+            node_colors.append('#1F77B4')  # Blue
+        elif node in ['p53', 'ATM/ATR', 'CHK1/CHK2']:
+            node_colors.append('#2CA02C')  # Green
+        else:
+            node_colors.append('#9467BD')  # Purple
+
+    # Draw nodes and labels with adjusted sizes
+    nx.draw_networkx_nodes(G, pos, node_size=node_size,
+                           node_color=node_colors, alpha=0.9, ax=ax)
+    nx.draw_networkx_labels(G, pos, font_size=8, ax=ax)  # Smaller font
+
+    # Draw edges with adjusted sizes
+    for u, v, d in edges:
+        nx.draw_networkx_edges(G, pos, edgelist=[(u, v)],
+                               width=1.5,  # Thinner edges
+                               edge_color=d['color'],
+                               arrows=True,
+                               arrowsize=15,  # Smaller arrows
+                               arrowstyle='->',
+                               ax=ax)
+
+    # Create compact legend
+    unique_types = {d['type']: d['color'] for _, _, d in edges}
+    legend_elements = [Line2D([0], [0], color=color, lw=2, label=type.capitalize())
+                       for type, color in unique_types.items()]
+
+    ax.legend(handles=legend_elements, loc='upper right', fontsize=8,
+              framealpha=1, facecolor='white')
+    ax.set_title(title, fontsize=12, pad=15)  # Smaller title
+    ax.axis('off')
+
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.show()
+    plt.close()
+    print(f"Successfully saved: {filename}")
+
+
+# ==============================================
+# GENERATE AND SAVE PLOTS
+# ==============================================
+if __name__ == "__main__":
+    try:
+        # Cell Cycle Network - with adjusted parameters
+        G_cc, edges_cc = create_cell_cycle_network()
+        draw_network(G_cc, edges_cc,
+                     "Core Cell Cycle Signaling Network",
+                     "cell_cycle_network.png",
+                     figsize=(14, 10),  # Wider figure
+                     node_size=600)  # Smaller nodes
+
+        # MAPK Network - with adjusted parameters
+        G_mapk, edges_mapk = create_mapk_network()
+        draw_network(G_mapk, edges_mapk,
+                     "Core MAPK Signaling Network",
+                     "mapk_network.png",
+                     figsize=(12, 8),  # Smaller figure
+                     node_size=500)  # Smaller nodes
+
+    except Exception as e:
+        print(f"Error occurred: {str(e)}")
