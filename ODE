@@ -1,0 +1,133 @@
+import numpy as np
+from scipy.integrate import odeint
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+
+# Parameters with more stable values
+params = {
+    'π': 20.0,  # Recruitment rate
+    'βT': 0.05,  # TB transmission rate (reduced for stability)
+    'βH': 0.03,  # HIV transmission rate (reduced for stability)
+    'μ': 0.01,  # Natural mortality rate
+    'κ': 0.05,  # TB progression rate (reduced)
+    'γ': 0.1,  # TB recovery rate
+    'δ': 0.02,  # HIV to AIDS progression (reduced)
+    'φ': 0.15,  # HIV treatment rate (increased)
+    'p': 0.8,  # Fraction becoming latent after TB recovery
+    'ω1': 0.05,  # TB treatment in HIV+
+    'ω2': 0.03,  # AIDS progression with TB (reduced)
+    'α': 0.05,  # TB activation in HIV+ (reduced)
+    'σ': 0.02,  # TB reinfection rate (reduced)
+    'ψ': 0.2,  # HIV susceptibility modifier for E
+    'ω': 0.2,  # HIV susceptibility modifier for I
+    'ρ': 0.2  # HIV susceptibility modifier for L
+}
+
+
+def model(y, t, params):
+    S, E, I, L, H, Eh, Ih, At, T = y
+    # Total population for normalization
+    N = S + E + I + L + H + Eh + Ih + At + T
+
+    # Force of infection terms
+    lambda_T = params['βT'] * (I + Ih + At) / N
+    lambda_H = params['βH'] * (H + Eh + Ih) / N
+
+    # Differential equations
+    dS = params['π'] - lambda_T * S - lambda_H * S - params['μ'] * S
+    dE = lambda_T * S - (params['κ'] + params['μ'] + params['ψ'] * lambda_H) * E
+    dI = params['κ'] * E + params['σ'] * L - (
+                params['γ'] + params['μ'] + params['δ'] * params['p'] + params['ω'] * lambda_H) * I
+    dL = (1 - params['p']) * params['γ'] * I - (params['σ'] + params['μ'] + params['ρ'] * lambda_H) * L
+    dH = lambda_H * S - (params['δ'] + params['φ'] + params['μ']) * H + params['α'] * Eh
+    dEh = params['ψ'] * lambda_H * E + lambda_T * H - (params['κ'] + params['α'] + params['μ']) * Eh
+    dIh = params['ω'] * lambda_H * I + params['κ'] * Eh + params['p'] * params['δ'] * I - (
+                params['ω1'] + params['ω2'] + params['μ']) * Ih
+    dAt = params['ω2'] * Ih - params['μ'] * At
+    dT = params['φ'] * H - params['μ'] * T
+
+    return [dS, dE, dI, dL, dH, dEh, dIh, dAt, dT]
+
+
+# Initial conditions (normalized to sum to 100%)
+initial_population = 10000
+y0 = [
+    0.9 * initial_population,  # S
+    0.05 * initial_population,  # E
+    0.02 * initial_population,  # I
+    0.01 * initial_population,  # L
+    0.01 * initial_population,  # H
+    0.005 * initial_population,  # Eh
+    0.005 * initial_population,  # Ih
+    0.002 * initial_population,  # At
+    0.008 * initial_population  # T
+]
+
+# Time points (2 years with daily steps)
+t = np.linspace(0, 730, 731)
+
+# Solve ODE with tighter tolerances
+solution = odeint(model, y0, t, args=(params,),
+                  rtol=1e-6, atol=1e-8,
+                  mxstep=5000)
+
+# Plotting
+plt.figure(figsize=(16, 12))
+gs = gridspec.GridSpec(2, 2)
+
+# Main dynamics plot
+ax1 = plt.subplot(gs[0, :])
+ax1.plot(t, solution[:, 0], 'b-', label='Susceptible (S)')
+ax1.plot(t, solution[:, 1], 'g--', label='Exposed TB (E)')
+ax1.plot(t, solution[:, 2], 'r-', label='Active TB (I)')
+ax1.plot(t, solution[:, 5], 'm:', label='HIV+Latent TB (Eh)')
+ax1.plot(t, solution[:, 6], 'c-', label='HIV+Active TB (Ih)')
+ax1.set_xlabel('Time (days)')
+ax1.set_ylabel('Population')
+ax1.legend()
+ax1.set_title('(A) Full Model Dynamics')
+ax1.grid(True)
+
+# Co-infection focus
+ax2 = plt.subplot(gs[1, 0])
+ax2.plot(t, solution[:, 5], 'm-', label='Eh')
+ax2.plot(t, solution[:, 6], 'c-', label='Ih')
+ax2.plot(t, solution[:, 7], 'y-', label='AIDS+TB (At)')
+ax2.set_xlabel('Time (days)')
+ax2.set_ylabel('Population')
+ax2.legend()
+ax2.set_title('(B) Co-infection Compartments')
+ax2.grid(True)
+
+# Treatment impact
+ax3 = plt.subplot(gs[1, 1])
+ax3.plot(t, solution[:, 4], 'k-', label='HIV+ (H)')
+ax3.plot(t, solution[:, 8], 'g-', label='Treated (T)')
+ax3.set_xlabel('Time (days)')
+ax3.set_ylabel('Population')
+ax3.legend()
+ax3.set_title('(C) Treatment Effects')
+ax3.grid(True)
+
+plt.tight_layout()
+plt.savefig('coinfection_dynamics_improved.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+# Calculate reproduction numbers
+R0_TB = (params['βT'] * params['κ']) / ((params['κ'] + params['μ']) * (params['γ'] + params['μ']))
+R0_HIV = params['βH'] / (params['δ'] + params['φ'] + params['μ'])
+R0_co = np.sqrt(
+    (params['βT'] * params['βH'] * params['ω2']) / (params['μ'] * (params['ω1'] + params['ω2'] + params['μ'])))
+
+# Print results
+print("\nReproduction Numbers:")
+print(f"TB: {R0_TB:.2f}")
+print(f"HIV: {R0_HIV:.2f}")
+print(f"Co-infection: {R0_co:.2f}\n")
+
+# Print final populations
+print("Final Populations:")
+print(f"Susceptible: {solution[-1, 0]:.0f}")
+print(f"Active TB: {solution[-1, 2]:.0f}")
+print(f"HIV+: {solution[-1, 4]:.0f}")
+print(f"Co-infected (Ih): {solution[-1, 6]:.0f}")
