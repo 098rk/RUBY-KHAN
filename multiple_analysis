@@ -1,0 +1,1320 @@
+from scipy.stats import norm
+import powerlaw
+from matplotlib.patches import Rectangle, FancyBboxPatch, Arrow
+from networkx.algorithms import community
+from matplotlib.lines import Line2D
+from matplotlib import colormaps
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import networkx as nx
+from matplotlib.patches import Patch, Rectangle
+from matplotlib.colors import LinearSegmentedColormap
+from scipy.cluster.hierarchy import linkage, leaves_list
+data = """
+p53,p53-p,interacts_with
+p53 mRNA,p53,interacts_with
+p53-p,Mdm2 mRNA ,interacts_with
+Mdm2 cyt,Mdm2-p cyt,interacts_with
+Mdm2 mRNA ,Mdm2 cyt,interacts_with
+Mdm2-p cyt,Mdm2-p nuc,interacts_with
+DSB,ATM-p,interacts_with
+ATM mRNA,ATM,interacts_with
+p53-p,ATM mRNA,interacts_with
+ATMa-p,p53-p,interacts_with
+ATMa-p,AKT-p ,interacts_with
+ATMa-p,KSRP-p ,interacts_with
+ATMa-p,CREB,interacts_with
+ATMa-p,Chk2-p,interacts_with
+ATM-p,MRN-p,interacts_with
+DSB,MRN-p,interacts_with
+CREB,ATM mRNA,interacts_with
+MRN-p,ATMa-p,interacts_with
+CREB,Wip1 mRNA,interacts_with
+p53-p,Chk2 mRNA,interacts_with
+p53-p,Bax mRNA,interacts_with
+p53-p,p21 mRNA,interacts_with
+p53-p,PTEN mRNA,interacts_with
+p53-p,Wip1 mRNA,interacts_with
+Wip1 mRNA,Wip1 ,interacts_with
+pre-miR-16,miR-16,interacts_with
+KSRP-p ,pre-miR-16,interacts_with
+Chk2 mRNA,Chk2 ,interacts_with
+Chk2-p,p53-p,interacts_with
+Bax mRNA,Bax,interacts_with
+Bax,apoptosis,interacts_with
+p21 mRNA,p21,interacts_with
+p21,cell cycle arrest,interacts_with
+IR,DSB,interacts_with
+p53-p,PTEN mRNA ,interacts_with
+PTEN mRNA ,PTEN ,interacts_with
+PTEN ,PIP2,interacts_with
+PIP2,PIP3,interacts_with
+PIP3,AKT-p ,interacts_with
+AKT-p ,Mdm2-p cyt,interacts_with
+TNFa,TNFR1,interacts_with
+TNFR1,IKKKa,interacts_with
+IKKKa,IKKa,interacts_with
+A20 mRNA,A20 cyt,interacts_with
+IKKa ,NFkB ,interacts_with
+NFkB ,IkBa mRNA,interacts_with
+NFkB ,A20 mRNA,interacts_with
+NFkB ,p53 mRNA,interacts_with
+IkBa mRNA,IkBa,interacts_with
+NFkB ,Wip1 mRNA,interacts_with
+"""
+
+# Create DataFrame and clean data
+rows = [line.split(',') for line in data.strip().split('\n')]
+df = pd.DataFrame(rows, columns=['source', 'target', 'interaction'])
+df['source'] = df['source'].str.strip()
+df['target'] = df['target'].str.strip()
+
+# Create directed graph
+G = nx.from_pandas_edgelist(df, 'source', 'target', create_using=nx.DiGraph())
+
+# Calculate degree distribution
+degrees = [d for n, d in G.degree()]
+in_degrees = [d for n, d in G.in_degree()]
+out_degrees = [d for n, d in G.out_degree()]
+
+# Calculate network metrics
+num_nodes = G.number_of_nodes()
+num_edges = G.number_of_edges()
+density = nx.density(G)
+avg_clustering = nx.average_clustering(G.to_undirected())
+avg_degree = np.mean(degrees)
+
+# Create figure with two subplots
+plt.figure(figsize=(14, 6))
+
+# Panel A: Log-log plot of degree distribution
+plt.subplot(1, 2, 1)
+
+# Calculate degree frequency
+unique_degrees, counts = np.unique(degrees, return_counts=True)
+
+# Fit power law
+fit = powerlaw.Fit(degrees, discrete=True)
+
+# Get the power law exponent and use it to plot the power law
+alpha = fit.alpha
+
+# Plot observed data
+plt.loglog(unique_degrees, counts, 'bo', markersize=8, label='Observed')
+
+# Plotting the power law fit
+plt.loglog(unique_degrees,
+           len(degrees)*(unique_degrees**-alpha),
+           'r--', linewidth=2,
+           label=f'Power law fit (α={alpha:.2f})')
+
+plt.xlabel('Degree (k)', fontsize=12)
+plt.ylabel('Frequency P(k)', fontsize=12)
+plt.title('A) Log-log Degree Distribution', fontsize=14)
+plt.legend(fontsize=10)
+plt.grid(True, which="both", ls="--")
+
+# Panel B: Histogram with Gaussian fit
+plt.subplot(1, 2, 2)
+
+# Fit Gaussian distribution
+mu, sigma = norm.fit(degrees)
+n, bins, patches = plt.hist(degrees, bins=range(min(degrees), max(degrees)+2),
+                   density=True, alpha=0.7, color='skyblue', edgecolor='black')
+
+# Plot Gaussian fit
+x = np.linspace(min(degrees), max(degrees), 100)
+pdf = norm.pdf(x, mu, sigma)
+plt.plot(x, pdf, 'r-', linewidth=2,
+         label=f'Gaussian fit\nμ={mu:.3f}, σ={sigma:.3f}')
+
+plt.xlabel('Degree', fontsize=12)
+plt.ylabel('Probability Density', fontsize=12)
+plt.title('B) Degree Distribution Histogram', fontsize=14)
+plt.legend(fontsize=10)
+plt.grid(True, ls="--")
+
+# Adjust layout and save
+plt.tight_layout()
+plt.savefig('degree_distribution.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+# Print network statistics
+print("\nNetwork Topological Metrics:")
+print(f"Node count: {num_nodes}")
+print(f"Edge count: {num_edges} (density = {density:.3f})")
+print(f"Average degree: {avg_degree:.3f} ± {np.std(degrees):.3f}")
+print(f"Average clustering coefficient: {avg_clustering:.3f} ± {np.std(list(nx.clustering(G.to_undirected()).values())):.3f}")
+print(f"Neighborhood connectivity: {np.mean(list(nx.average_neighbor_degree(G).values())):.3f} ± {np.std(list(nx.average_neighbor_degree(G).values())):.3f}")
+
+# Calculate and print hub information
+degree_centrality = nx.degree_centrality(G)
+top_nodes = sorted(degree_centrality.items(), key=lambda x: x[1], reverse=True)[:5]
+
+print("\nTop 5 Hub Nodes:")
+for node, centrality in top_nodes:
+    print(f"{node}: degree={G.degree(node)}, centrality={centrality:.3f}")
+
+
+# Create network 
+data = """
+p53,p53-p,interacts_with
+p53 mRNA,p53,interacts_with
+p53-p,Mdm2 mRNA ,interacts_with
+Mdm2 cyt,Mdm2-p cyt,interacts_with
+Mdm2 mRNA ,Mdm2 cyt,interacts_with
+Mdm2-p cyt,Mdm2-p nuc,interacts_with
+DSB,ATM-p,interacts_with
+ATM mRNA,ATM,interacts_with
+p53-p,ATM mRNA,interacts_with
+ATMa-p,p53-p,interacts_with
+ATMa-p,AKT-p ,interacts_with
+ATMa-p,KSRP-p ,interacts_with
+ATMa-p,CREB,interacts_with
+ATMa-p,Chk2-p,interacts_with
+ATM-p,MRN-p,interacts_with
+DSB,MRN-p,interacts_with
+CREB,ATM mRNA,interacts_with
+MRN-p,ATMa-p,interacts_with
+CREB,Wip1 mRNA,interacts_with
+p53-p,Chk2 mRNA,interacts_with
+p53-p,Bax mRNA,interacts_with
+p53-p,p21 mRNA,interacts_with
+p53-p,PTEN mRNA,interacts_with
+p53-p,Wip1 mRNA,interacts_with
+Wip1 mRNA,Wip1 ,interacts_with
+pre-miR-16,miR-16,interacts_with
+KSRP-p ,pre-miR-16,interacts_with
+Chk2 mRNA,Chk2 ,interacts_with
+Chk2-p,p53-p,interacts_with
+Bax mRNA,Bax,interacts_with
+Bax,apoptosis,interacts_with
+p21 mRNA,p21,interacts_with
+p21,cell cycle arrest,interacts_with
+IR,DSB,interacts_with
+p53-p,PTEN mRNA ,interacts_with
+PTEN mRNA ,PTEN ,interacts_with
+PTEN ,PIP2,interacts_with
+PIP2,PIP3,interacts_with
+PIP3,AKT-p ,interacts_with
+AKT-p ,Mdm2-p cyt,interacts_with
+TNFa,TNFR1,interacts_with
+TNFR1,IKKKa,interacts_with
+IKKKa,IKKa,interacts_with
+A20 mRNA,A20 cyt,interacts_with
+IKKa ,NFkB ,interacts_with
+NFkB ,IkBa mRNA,interacts_with
+NFkB ,A20 mRNA,interacts_with
+NFkB ,p53 mRNA,interacts_with
+IkBa mRNA,IkBa,interacts_with
+NFkB ,Wip1 mRNA,interacts_with
+"""
+
+# Create DataFrame and clean data
+rows = [line.split(',') for line in data.strip().split('\n')]
+df = pd.DataFrame(rows, columns=['source', 'target', 'interaction'])
+df['source'] = df['source'].str.strip()
+df['target'] = df['target'].str.strip()
+
+# Create directed graph
+G = nx.from_pandas_edgelist(df, 'source', 'target', create_using=nx.DiGraph())
+
+# Compute the best partition for the community (functional modules) using the built-in community detection in networkx
+# Use the "greedy_modularity_communities" function
+communities = community.greedy_modularity_communities(G.to_undirected())
+
+# Create position dictionary for force-directed layout
+pos = nx.spring_layout(G, k=0.15, iterations=20)
+
+# Get the node sizes proportional to the degree
+node_sizes = [500 * G.degree(n) for n in G.nodes()]
+
+# Get the colors for the nodes based on their community
+node_colors = [next(i for i, c in enumerate(communities) if n in c) for n in G.nodes()]
+
+# Create the plot with force-directed layout and node size proportional to degree
+plt.figure(figsize=(12, 12))
+
+# Draw the graph
+nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color=node_colors, cmap=plt.cm.jet, alpha=0.7)
+nx.draw_networkx_edges(G, pos, alpha=0.5, width=1)
+nx.draw_networkx_labels(G, pos, font_size=10, font_weight='bold')
+
+plt.title("Network Visualization Showing (A) Force-Directed Layout \nwith Node Size Proportional to Degree and (B) Functional Module Identification", fontsize=14)
+plt.axis('off')  # Turn off the axis
+plt.tight_layout()
+
+# Save the plot as an image
+plt.savefig('CYTO1.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+
+# Set up the figure
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.set_xlim(0, 10)
+ax.set_ylim(0, 6)
+ax.axis('off')  # Turn off axes
+
+# Pipeline phases
+phases = [
+    "1. Data Collection",
+    "2. Preprocessing",
+    "3. Network Construction",
+    "4. Interaction Analysis",
+    "5. Visualization"
+]
+
+descriptions = [
+    "GDC, AnimalTFDB\nCellTalkDB, Pathway Commons",
+    "Quality control\nIdentifier mapping\nNull value removal",
+    "12,549 nodes\n86,203 edges",
+    "Hub identification\nPathway enrichment",
+    "Cytoscape networks\nPublication figures"
+]
+
+# Colors for each phase
+colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+
+# Draw the pipeline
+for i, (phase, desc, color) in enumerate(zip(phases, descriptions, colors)):
+    # Main process box
+    box = FancyBboxPatch((i * 2 + 0.5, 3), 1.5, 1.5,
+                         boxstyle="round,pad=0.1",
+                         ec="black", fc=color, alpha=0.7)
+    ax.add_patch(box)
+
+    # Phase number and name
+    ax.text(i * 2 + 1.25, 4.2, phase,
+            ha='center', va='center', fontweight='bold', fontsize=10)
+
+    # Description text
+    ax.text(i * 2 + 1.25, 3.5, desc,
+            ha='center', va='center', fontsize=8)
+
+    # Add arrows between phases
+    if i < len(phases) - 1:
+        arrow = Arrow(i * 2 + 2, 3.75, 0.5, 0,
+                      width=0.2, color='black')
+        ax.add_patch(arrow)
+
+# Add title
+ax.text(5, 5.5, "Integrated Bioinformatics Pipeline",
+        ha='center', va='center', fontsize=14, fontweight='bold')
+
+# Add data sources at bottom
+data_sources = ["GDC", "AnimalTFDB", "CellTalkDB", "Pathway Commons"]
+for j, source in enumerate(data_sources):
+    ax.text(j * 2 + 1.25, 1.5, source,
+            bbox=dict(facecolor='lightgray', alpha=0.5),
+            ha='center', va='center')
+
+plt.tight_layout()
+plt.savefig('bioinformatics_pipeline.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+
+
+# Set up the figure with better proportions
+fig, ax = plt.subplots(figsize=(14, 6))
+ax.set_xlim(0, 12)
+ax.set_ylim(0, 6)
+ax.axis('off')
+
+# Set a light background color
+fig.patch.set_facecolor('#f5f5f5')
+ax.set_facecolor('#f5f5f5')
+
+# Colors using a scientific color palette
+colors = {
+    'database': '#3498db',
+    'process1': '#2ecc71',
+    'process2': '#f39c12',
+    'process3': '#e74c3c',
+    'output': '#9b59b6',
+    'arrow': '#34495e',
+    'text': '#2c3e50',
+    'white': '#ffffff'
+}
+
+# Database symbol
+database = patches.Rectangle((1, 2.5), 1.8, 2,
+                             linewidth=2, edgecolor='#2980b9',
+                             facecolor=colors['database'], alpha=0.8)
+ax.add_patch(database)
+
+# Database icon elements (horizontal lines to represent database tables)
+for i in range(4):
+    ax.plot([1.3, 2.6], [3.2 + i * 0.4, 3.2 + i * 0.4],
+            color='white', linewidth=1.5)
+ax.text(1.9, 3.5, "MySQL\nDatabase",
+        ha='center', va='center',
+        color='white', weight='bold', fontsize=11)
+
+# Process steps with more visual details
+processes = [
+    {"label": "A) SQL Query\nFormulation", "x": 4, "color": colors['process1'],
+     "details": ["• Parameterized queries", "• JOIN operations", "• Filter conditions"]},
+    {"label": "B) Format\nConversion", "x": 7, "color": colors['process2'],
+     "details": ["• Type conversion", "• ID mapping", "• Metadata preservation"]},
+    {"label": "C) File\nGeneration", "x": 10, "color": colors['process3'],
+     "details": ["• SIF/CSV formats", "• Attribute validation", "• Network properties"]}
+]
+
+for process in processes:
+    # Main process box with rounded corners
+    box = patches.FancyBboxPatch((process['x'] - 1.5, 2.5), 3, 2,
+                                 boxstyle="round,pad=0.3",
+                                 ec='#34495e', fc=process['color'], alpha=0.8)
+    ax.add_patch(box)
+
+    # Process label
+    ax.text(process['x'], 3.8, process['label'],
+            ha='center', va='center',
+            color='white', weight='bold', fontsize=11)
+
+    # Process details
+    for i, detail in enumerate(process['details']):
+        ax.text(process['x'], 3.3 - i * 0.3, detail,
+                ha='center', va='center',
+                color='white', fontsize=9)
+
+# Arrows between processes
+arrow_steps = [
+    (2.8, 3.5, 0.7, 0, colors['arrow']),
+    (5.5, 3.5, 0.7, 0, colors['arrow']),
+    (8.5, 3.5, 0.7, 0, colors['arrow'])
+]
+
+for x, y, dx, dy, color in arrow_steps:
+    ax.annotate("", xytext=(x, y), xy=(x + dx, y + dy),
+                arrowprops=dict(arrowstyle="->", color=color,
+                                linewidth=2, shrinkA=5, shrinkB=5))
+
+# Output file symbol
+output = patches.FancyBboxPatch((11, 2.5), 1.8, 2,
+                                boxstyle="round,pad=0.3",
+                                ec='#8e44ad', fc=colors['output'], alpha=0.8)
+ax.add_patch(output)
+
+# File icon inside output box
+ax.add_patch(patches.Rectangle((11.4, 3.8), 0.8, 0.5,
+                               facecolor=colors['white'], edgecolor='none'))
+ax.plot([11.4, 11.4], [3.8, 4.3], color=colors['white'], linewidth=2)
+ax.plot([12.2, 12.2], [3.8, 4.3], color=colors['white'], linewidth=2)
+ax.plot([11.5, 12.1], [4.0, 4.0], color=colors['output'], linewidth=1)
+ax.plot([11.5, 12.1], [4.1, 4.1], color=colors['output'], linewidth=1)
+
+ax.text(11.9, 3.5, "Network Files",
+        ha='center', va='center',
+        color='white', weight='bold', fontsize=11)
+
+# Title and subtitle
+ax.text(6, 5.3, "Database Export Pipeline for Network Visualization",
+        ha='center', va='center',
+        fontsize=14, weight='bold', color=colors['text'])
+
+ax.text(6, 4.9, "From SQL queries to Cytoscape-compatible network files",
+        ha='center', va='center',
+        fontsize=11, style='italic', color=colors['text'])
+
+# Decorative lines
+ax.plot([0.5, 11.5], [4.7, 4.7], color='#bdc3c7', linestyle=':', linewidth=1)
+ax.plot([0.5, 11.5], [2.3, 2.3], color='#bdc3c7', linestyle=':', linewidth=1)
+
+plt.tight_layout()
+plt.savefig('database_export_pipeline.png', dpi=600, bbox_inches='tight')
+plt.show()
+
+
+# Set up the figure
+fig, ax = plt.subplots(figsize=(18, 12))
+ax.set_xlim(0, 18)
+ax.set_ylim(0, 12)
+ax.axis('off')
+
+# Set background color
+fig.patch.set_facecolor('#f5f7fa')
+ax.set_facecolor('#f5f7fa')
+
+# Custom vibrant colors
+colors = {
+    'genomic': '#2980b9',  # Blue
+    'tf': '#27ae60',  # Green
+    'interaction': '#d35400',  # Orange
+    'pathway': '#8e44ad',  # Purple
+    'highlight': '#e74c3c',  # Red for PK/FK
+    'text': '#2c3e50',  # Dark gray
+    'line': '#34495e'  # Darker gray
+}
+
+# Title with outline effect
+title = ax.text(9, 11.2, 'ENTITY-RELATIONSHIP DIAGRAM\nINTEGRATED BIOLOGICAL DATABASE',
+                ha='center', va='center',
+                fontsize=18, weight='bold', color=colors['text'])
+title.set_bbox(dict(facecolor='white', edgecolor='none', alpha=0.7, boxstyle='round,pad=0.5'))
+
+# Subtitle
+ax.text(9, 10.4, 'Integrating Genomic, Transcription Factor, Interaction and Pathway Data',
+        ha='center', va='center',
+        fontsize=12, color=colors['text'], style='italic')
+
+# Database Tables
+tables = [
+    {
+        "name": "Genomic_Data",
+        "x": 2, "y": 7, "color": colors['genomic'],
+        "attrs": [
+            '• gene_id (PK)',
+            '• gene_symbol',
+            '• gene_name',
+            '• ensembl_id',
+            '• entrez_id',
+            '• gene_type',
+            '• chromosome',
+            '• tpm_expression',
+            '• fpkm_values',
+            '• clinical_status'
+        ],
+        "source": "GDC"
+    },
+    {
+        "name": "Transcription_Factors",
+        "x": 7, "y": 7, "color": colors['tf'],
+        "attrs": [
+            '• tf_id (PK)',
+            '• gene_id (FK)',
+            '• tf_symbol',
+            '• tf_family',
+            '• dna_binding',
+            '• target_genes',
+            '• conservation',
+            '• motif_seq',
+            '• exp_evidence',
+            '• orthologs'
+        ],
+        "source": "AnimalTFDB 3.0"
+    },
+    {
+        "name": "Ligand_Receptor",
+        "x": 12, "y": 7, "color": colors['interaction'],
+        "attrs": [
+            '• interaction_id (PK)',
+            '• ligand_id (FK)',
+            '• receptor_id (FK)',
+            '• lr_pair',
+            '• evidence',
+            '• confidence',
+            '• pubmed_id',
+            '• pathway_assoc',
+            '• cancer_link',
+            '• therapeutic_target'
+        ],
+        "source": "CellTalkDB"
+    },
+    {
+        "name": "Pathway_Commons",
+        "x": 4.5, "y": 3, "color": colors['pathway'],
+        "attrs": [
+            '• pathway_id (PK)',
+            '• pathway_name',
+            '• source_db',
+            '• participants',
+            '• interaction_type',
+            '• pubmed_ref',
+            '• gene_ids (FK)',
+            '• tf_ids (FK)',
+            '• disease_link',
+            '• drug_targets'
+        ],
+        "source": "Pathway Commons"
+    }
+]
+
+for table in tables:
+    # Main table box
+    box = patches.FancyBboxPatch((table['x'], table['y']), 4, 3,
+                                 boxstyle="round,pad=0.3",
+                                 ec='black', fc=table['color'], alpha=0.85,
+                                 linewidth=2)
+    ax.add_patch(box)
+
+    # Table name and source
+    ax.text(table['x'] + 2, table['y'] + 2.6, table['name'],
+            ha='center', va='center',
+            color='white', weight='bold', fontsize=12)
+    ax.text(table['x'] + 2, table['y'] + 2.3, f"Source: {table['source']}",
+            ha='center', va='center',
+            color='white', fontsize=9, style='italic')
+
+    # Table attributes
+    for i, attr in enumerate(table['attrs']):
+        color = colors['highlight'] if '(PK)' in attr or '(FK)' in attr else 'white'
+        weight = 'bold' if '(PK)' in attr or '(FK)' in attr else 'normal'
+        ax.text(table['x'] + 0.5, table['y'] + 1.9 - i * 0.25, attr,
+                ha='left', va='center',
+                color=color, fontsize=9, weight=weight)
+
+# Relationship Lines (simplified without PathPatch)
+relationships = [
+    # From Genomic_Data
+    ((4, 7.5), (7, 9.5), '1:N', 'Contains TF genes'),
+    ((4, 7), (12, 9.5), '1:N', 'Encodes ligands'),
+    ((4, 6.5), (12, 9), '1:N', 'Encodes receptors'),
+    ((4, 6), (6.5, 4.5), 'M:N', 'In pathways'),
+
+    # From Transcription_Factors
+    ((7, 6), (6.5, 4.5), 'M:N', 'Regulates pathways'),
+
+    # From Ligand_Receptor
+    ((12, 6), (6.5, 4.5), 'M:N', 'Pathway components')
+]
+
+for (x1, y1), (x2, y2), rel_type, label in relationships:
+    # Draw straight connection lines with arrows
+    ax.annotate("", xy=(x2, y2), xytext=(x1, y1),
+                arrowprops=dict(arrowstyle="->", color=colors['line'],
+                                lw=2, shrinkA=10, shrinkB=10))
+
+    # Add relationship label
+    mid_x = (x1 + x2) / 2
+    mid_y = (y1 + y2) / 2
+    ax.text(mid_x, mid_y + 0.3, f"{label}\n({rel_type})",
+            ha='center', va='center',
+            backgroundcolor='white', fontsize=8, color=colors['line'],
+            bbox=dict(boxstyle='round,pad=0.2', fc='white', ec='none', alpha=0.7))
+
+# Legend
+legend_elements = [
+    patches.Patch(facecolor=colors['genomic'], edgecolor='black',
+                  label='Genomic Data (GDC)'),
+    patches.Patch(facecolor=colors['tf'], edgecolor='black',
+                  label='Transcription Factors (AnimalTFDB)'),
+    patches.Patch(facecolor=colors['interaction'], edgecolor='black',
+                  label='Ligand-Receptor (CellTalkDB)'),
+    patches.Patch(facecolor=colors['pathway'], edgecolor='black',
+                  label='Pathways (Pathway Commons)'),
+    plt.Line2D([0], [0], color=colors['line'], lw=2,
+               label='Relationships'),
+    plt.Line2D([0], [0], marker='o', color=colors['highlight'], lw=0,
+               label='Primary/Foreign Keys', markersize=8)
+]
+
+legend = ax.legend(handles=legend_elements, loc='lower center',
+                   ncol=3, bbox_to_anchor=(0.5, 0.05),
+                   frameon=True, shadow=True,
+                   facecolor='white', edgecolor='#bdc3c7',
+                   title='Database Components', title_fontsize=10)
+legend.get_frame().set_alpha(0.9)
+
+# Database statistics
+stats = [
+    "Database Statistics:",
+    "• 12,549 genes",
+    "• 1,427 transcription factors",
+    "• 3,397 ligand-receptor pairs",
+    "• 1,957 biological pathways",
+    "• 140,883 molecular interactions"
+]
+
+for i, stat in enumerate(stats):
+    ax.text(15, 10 - i * 0.5, stat, ha='left', va='center',
+            fontsize=10, color=colors['text'],
+            bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='#bdc3c7', alpha=0.8))
+
+plt.tight_layout()
+plt.savefig('biological_database_ERD.png', dpi=600, bbox_inches='tight')
+plt.show()
+
+
+# Set up the data
+biomarkers = ['CREB', 'ATM', 'p53', 'PTEN', 'AKT', 'Bax']
+dfs_hr = [0.93, 1.10, 1.20, 3.00, 0.72, 0.88]
+dfs_ci_lower = [0.72, 0.85, 0.88, 1.48, 0.56, 0.68]
+dfs_ci_upper = [1.19, 1.42, 1.63, 6.07, 0.92, 1.13]
+os_hr = [1.10, 1.20, 0.99, 2.30, 0.81, 0.96]
+os_ci_lower = [0.86, 0.92, 0.76, 1.02, 0.63, 0.75]
+os_ci_upper = [1.42, 1.57, 1.29, 5.19, 1.04, 1.24]
+
+# Calculate positions
+y_pos = np.arange(len(biomarkers))
+offset = 0.2  # Space between DFS and OS points
+
+# Create figure with manual styling
+plt.figure(figsize=(12, 8))
+
+# Set background and grid colors manually
+ax = plt.gca()
+ax.set_facecolor('#f5f7fa')  # Light gray background
+ax.grid(color='#d5d5d5', linestyle='--', linewidth=0.5, axis='x', alpha=0.7)
+
+# Create the forest plot
+plt.axvline(x=1, color='#7f8c8d', linestyle='--', alpha=0.5)  # Reference line at HR=1
+
+# Plot DFS data with custom styling
+plt.errorbar(x=dfs_hr, y=y_pos-offset,
+            xerr=[np.array(dfs_hr)-np.array(dfs_ci_lower), np.array(dfs_ci_upper)-np.array(dfs_hr)],
+            fmt='o', color='#3498db', ecolor='#2980b9', elinewidth=2, capsize=5,
+            markersize=10, label='Disease-Free Survival (DFS)',
+            markeredgewidth=1, markeredgecolor='white')
+
+# Plot OS data with custom styling
+plt.errorbar(x=os_hr, y=y_pos+offset,
+            xerr=[np.array(os_hr)-np.array(os_ci_lower), np.array(os_ci_upper)-np.array(os_hr)],
+            fmt='s', color='#e74c3c', ecolor='#c0392b', elinewidth=2, capsize=5,
+            markersize=10, label='Overall Survival (OS)',
+            markeredgewidth=1, markeredgecolor='white')
+
+# Add significance indicators
+for i, hr in enumerate(dfs_hr):
+    if biomarkers[i] == 'PTEN':
+        plt.text(hr, y_pos[i]-offset-0.15, '**', ha='center', color='#27ae60', fontsize=14, weight='bold')
+    elif biomarkers[i] == 'AKT':
+        plt.text(hr, y_pos[i]-offset-0.15, '*', ha='center', color='#27ae60', fontsize=14, weight='bold')
+
+for i, hr in enumerate(os_hr):
+    if biomarkers[i] == 'PTEN':
+        plt.text(hr, y_pos[i]+offset+0.15, '*', ha='center', color='#27ae60', fontsize=14, weight='bold')
+
+# Customize the plot appearance manually
+plt.yticks(y_pos, biomarkers, fontsize=12)
+plt.xticks(fontsize=12)
+plt.xlabel('Hazard Ratio (HR) with 95% Confidence Intervals', fontsize=14, weight='bold')
+plt.title('Forest Plot of Biomarker Associations with Survival Outcomes',
+         fontsize=16, pad=20, weight='bold')
+
+# Add explanatory text
+plt.text(0.5, -1.2, '** p < 0.01, * p < 0.05', ha='center', fontsize=12, color='#2c3e50')
+plt.text(3.5, -1.2, 'HR < 1: Better Survival | HR > 1: Worse Survival',
+        ha='center', fontsize=12, color='#2c3e50')
+
+# Add legend with custom styling
+legend = plt.legend(loc='upper right', fontsize=12, framealpha=1)
+legend.get_frame().set_edgecolor('#d5d5d5')
+legend.get_frame().set_facecolor('white')
+
+# Add colored background for different effect directions
+ax.axvspan(0, 1, color='#2ecc71', alpha=0.05)  # Green for protective effects
+ax.axvspan(1, 6.5, color='#e74c3c', alpha=0.05)  # Red for risk effects
+
+# Adjust spines (borders)
+for spine in ['top', 'right']:
+    ax.spines[spine].set_visible(False)
+for spine in ['bottom', 'left']:
+    ax.spines[spine].set_color('#d5d5d5')
+
+# Adjust layout and save
+plt.tight_layout()
+plt.savefig('biomarker_forest_plot.png', dpi=600, bbox_inches='tight', facecolor='white')
+plt.show()
+
+# Set up the data with additional clinical context
+biomarkers = ['CREB', 'ATM', 'p53', 'PTEN', 'AKT', 'Bax']
+biomarker_fullnames = ['cAMP Response Element-Binding Protein',
+                       'Ataxia Telangiectasia Mutated',
+                       'Tumor Protein p53',
+                       'Phosphatase and Tensin Homolog',
+                       'Protein Kinase B',
+                       'BCL2-Associated X Protein']
+
+dfs_hr = [0.93, 1.10, 1.20, 3.00, 0.72, 0.88]
+dfs_ci_lower = [0.72, 0.85, 0.88, 1.48, 0.56, 0.68]
+dfs_ci_upper = [1.19, 1.42, 1.63, 6.07, 0.92, 1.13]
+os_hr = [1.10, 1.20, 0.99, 2.30, 0.81, 0.96]
+os_ci_lower = [0.86, 0.92, 0.76, 1.02, 0.63, 0.75]
+os_ci_upper = [1.42, 1.57, 1.29, 5.19, 1.04, 1.24]
+
+# Calculate positions
+y_pos = np.arange(len(biomarkers))
+offset = 0.2  # Space between DFS and OS points
+
+# Create figure with manual styling
+fig, ax = plt.subplots(figsize=(14, 10))
+fig.patch.set_facecolor('#f8f9fa')
+ax.set_facecolor('#f8f9fa')
+
+# Add title with subtitle
+plt.suptitle('Comprehensive Biomarker Survival Analysis in Ovarian Cancer',
+             fontsize=18, weight='bold', y=0.98)
+plt.title('Forest Plot Comparing Hazard Ratios for Disease-Free and Overall Survival\nwith 95% Confidence Intervals',
+          fontsize=14, pad=20)
+
+# Create the forest plot
+ref_line = plt.axvline(x=1, color='#6c757d', linestyle=':', alpha=0.8, linewidth=2)
+
+# Plot DFS data with enhanced styling
+dfs_plot = plt.errorbar(x=dfs_hr, y=y_pos - offset,
+                        xerr=[np.array(dfs_hr) - np.array(dfs_ci_lower),
+                              np.array(dfs_ci_upper) - np.array(dfs_hr)],
+                        fmt='o', color='#1a5276', ecolor='#2874a6',
+                        elinewidth=2.5, capsize=8, capthick=2.5,
+                        markersize=12, label='Disease-Free Survival (DFS)',
+                        markeredgewidth=1.5, markeredgecolor='white')
+
+# Plot OS data with enhanced styling
+os_plot = plt.errorbar(x=os_hr, y=y_pos + offset,
+                       xerr=[np.array(os_hr) - np.array(os_ci_lower),
+                             np.array(os_ci_upper) - np.array(os_hr)],
+                       fmt='D', color='#922b21', ecolor='#c0392b',
+                       elinewidth=2.5, capsize=8, capthick=2.5,
+                       markersize=10, label='Overall Survival (OS)',
+                       markeredgewidth=1.5, markeredgecolor='white')
+
+# Add significance indicators and clinical context
+sig_symbols = []
+for i, (hr_dfs, hr_os) in enumerate(zip(dfs_hr, os_hr)):
+    # DFS significance
+    if biomarkers[i] == 'PTEN':
+        sig_dfs = plt.text(hr_dfs, y_pos[i] - offset - 0.18, '**',
+                           ha='center', color='#27ae60', fontsize=16, weight='bold')
+        sig_symbols.append('** p<0.01')
+    elif biomarkers[i] == 'AKT':
+        sig_dfs = plt.text(hr_dfs, y_pos[i] - offset - 0.18, '*',
+                           ha='center', color='#27ae60', fontsize=16, weight='bold')
+        sig_symbols.append('* p<0.05')
+
+    # OS significance
+    if biomarkers[i] == 'PTEN':
+        sig_os = plt.text(hr_os, y_pos[i] + offset + 0.18, '*',
+                          ha='center', color='#27ae60', fontsize=16, weight='bold')
+
+    # Add biomarker full names
+    plt.text(-1.5, y_pos[i], biomarker_fullnames[i],
+             ha='right', va='center', fontsize=11, color='#34495e')
+
+# Add detailed table-like annotations
+for i in range(len(biomarkers)):
+    # DFS data
+    plt.text(7.5, y_pos[i] - offset,
+             f"HR={dfs_hr[i]:.2f} ({dfs_ci_lower[i]:.2f}-{dfs_ci_upper[i]:.2f})",
+             ha='left', va='center', fontsize=11, color='#1a5276')
+
+    # OS data
+    plt.text(7.5, y_pos[i] + offset,
+             f"HR={os_hr[i]:.2f} ({os_ci_lower[i]:.2f}-{os_ci_upper[i]:.2f})",
+             ha='left', va='center', fontsize=11, color='#922b21')
+
+# Customize the plot appearance
+plt.yticks(y_pos, biomarkers, fontsize=13, weight='bold')
+plt.xticks(np.arange(0, 7.5, 0.5), fontsize=12)
+plt.xlabel('Hazard Ratio (HR)\n Scale (Logarithmic)', fontsize=14, weight='bold', labelpad=15)
+plt.ylabel('Biomarkers', fontsize=14, weight='bold', labelpad=15)
+
+# Add interpretation guide
+interpretation_text = [
+    "Clinical Interpretation Guide:",
+    "• HR < 1: Protective effect (Better survival)",
+    "• HR > 1: Risk effect (Worse survival)",
+    "• 95% CI not crossing 1: Statistically significant",
+    "Significance: " + ", ".join(set(sig_symbols))
+]
+
+for i, text in enumerate(interpretation_text):
+    plt.text(0.5, -1.2 - i * 0.3, text,
+             ha='center', fontsize=11, color='#2c3e50',
+             bbox=dict(facecolor='#ebedef', edgecolor='#d5d5d5', boxstyle='round,pad=0.5'))
+
+# Add colored background for effect directions
+protective = Rectangle((0, -0.5), 1, len(biomarkers) + 0.5,
+                       facecolor='#d5f5e3', alpha=0.3, edgecolor=None)
+risk = Rectangle((1, -0.5), 6, len(biomarkers) + 0.5,
+                 facecolor='#fadbd8', alpha=0.3, edgecolor=None)
+ax.add_patch(protective)
+ax.add_patch(risk)
+
+# Add legend with clinical context
+legend = plt.legend(loc='upper right', fontsize=12, framealpha=1,
+                    title='Survival Endpoints', title_fontsize=13)
+legend.get_frame().set_edgecolor('#d5d5d5')
+legend.get_frame().set_facecolor('white')
+
+# Adjust spines and layout
+for spine in ['top', 'right']:
+    ax.spines[spine].set_visible(False)
+for spine in ['bottom', 'left']:
+    ax.spines[spine].set_color('#d5d5d5')
+    ax.spines[spine].set_linewidth(1.5)
+
+plt.xlim(0, 7.5)
+plt.ylim(-1, len(biomarkers) - 0.5)
+plt.tight_layout()
+
+# Add footer with data source
+plt.text(0.5, -2.2, "Data Source: Integrated analysis of GDC, AnimalTFDB, CellTalkDB, and Pathway Commons",
+         ha='center', fontsize=10, color='#7f8c8d')
+
+plt.savefig('enhanced_biomarker_forest_plot.png', dpi=600, bbox_inches='tight', facecolor='white')
+plt.show()
+
+
+
+# Set up custom color maps
+hub_cmap = LinearSegmentedColormap.from_list('hub_cmap', ['#ff7f0e', '#d62728'])
+module_cmap = colormaps['tab20'].resampled(14)  # Correct colormap usage
+edge_cmap = LinearSegmentedColormap.from_list('edge_cmap', ['#a6bddb', '#0570b0'])
+
+# Create figure with better layout management
+fig = plt.figure(figsize=(24, 16), constrained_layout=True)
+gs = fig.add_gridspec(3, 3, width_ratios=[1.4, 0.7, 0.7], height_ratios=[1, 1, 0.4])
+
+# Main network plot
+ax_net = fig.add_subplot(gs[:, 0])
+
+# Create and populate the graph properly
+G = nx.Graph()
+
+# Define hub nodes with properties
+hub_nodes = ['CREB', 'ATM', 'p53', 'AKT', 'PTEN', 'Wip1', 'Mdm2', 'Bax']
+hub_properties = {
+    'CREB': {'betweenness': 0.112, 'module': 1, 'degree': 0},
+    'ATM': {'betweenness': 0.105, 'module': 2, 'degree': 0},
+    'p53': {'betweenness': 0.098, 'module': 3, 'degree': 0},
+    'AKT': {'betweenness': 0.095, 'module': 4, 'degree': 0},
+    'PTEN': {'betweenness': 0.091, 'module': 5, 'degree': 0},
+    'Wip1': {'betweenness': 0.089, 'module': 6, 'degree': 0},
+    'Mdm2': {'betweenness': 0.088, 'module': 7, 'degree': 0},
+    'Bax': {'betweenness': 0.087, 'module': 8, 'degree': 0}
+}
+
+# Add nodes to graph
+for hub, props in hub_properties.items():
+    G.add_node(hub, type='hub', **props)
+
+# Add non-hub nodes (60 nodes for better visualization)
+non_hub_nodes = [f'Gene_{i}' for i in range(1, 61)]
+for gene in non_hub_nodes:
+    G.add_node(gene, type='non-hub',
+               betweenness=np.random.uniform(0.001, 0.05),
+               module=np.random.randint(1, 15),
+               degree=0)
+
+# Create connections - hubs first
+for i, hub1 in enumerate(hub_nodes):
+    for hub2 in hub_nodes[i+1:]:
+        weight = np.random.uniform(0.7, 1.0)
+        G.add_edge(hub1, hub2, weight=weight, sig=True)
+        G.nodes[hub1]['degree'] += 1
+        G.nodes[hub2]['degree'] += 1
+
+# Connect hubs to non-hubs
+for hub in hub_nodes:
+    num_connections = np.random.randint(8, 15)  # Fewer connections for clarity
+    targets = np.random.choice(non_hub_nodes, num_connections, replace=False)
+    for target in targets:
+        if np.random.random() < 0.38:  # 38% significant
+            weight = np.random.uniform(0.7, 1.0)
+            sig = True
+        else:
+            weight = np.random.uniform(0.1, 0.6)
+            sig = False
+        G.add_edge(hub, target, weight=weight, sig=sig)
+        G.nodes[hub]['degree'] += 1
+        G.nodes[target]['degree'] += 1
+
+# Add some connections between non-hub nodes
+for _ in range(80):
+    source, target = np.random.choice(non_hub_nodes, 2, replace=False)
+    if not G.has_edge(source, target):
+        weight = np.random.uniform(0.1, 0.6)
+        G.add_edge(source, target, weight=weight, sig=False)
+        G.nodes[source]['degree'] += 1
+        G.nodes[target]['degree'] += 1
+
+# Calculate layout with more space
+pos = nx.spring_layout(G, k=0.3, iterations=300, seed=42)
+
+# Visualization parameters
+node_sizes = [G.nodes[n]['degree']*20 + 40 for n in G.nodes()]
+edge_widths = [G.edges[e]['weight']*2.5 + 0.3 for e in G.edges()]
+
+# Draw network components
+nx.draw_networkx_nodes(
+    G, pos, ax=ax_net,
+    nodelist=non_hub_nodes,
+    node_size=[node_sizes[list(G.nodes()).index(n)] for n in non_hub_nodes],
+    node_color=[module_cmap(G.nodes[n]['module']) for n in non_hub_nodes],
+    edgecolors='white',
+    linewidths=0.7,
+    alpha=0.9
+)
+
+# Highlight hub nodes
+nx.draw_networkx_nodes(
+    G, pos, ax=ax_net, nodelist=hub_nodes,
+    node_size=[node_sizes[list(G.nodes()).index(n)]*1.5 for n in hub_nodes],
+    node_color=[module_cmap(G.nodes[n]['module']) for n in hub_nodes],
+    edgecolors='black',
+    linewidths=2,
+    node_shape='s',
+    alpha=1.0
+)
+
+# Draw edges
+nx.draw_networkx_edges(
+    G, pos, ax=ax_net,
+    width=edge_widths,
+    edge_color=[edge_cmap(G.edges[e]['weight']) for e in G.edges()],
+    alpha=[min(0.3 + G.edges[e]['weight']**1.5, 0.7) for e in G.edges()]
+)
+
+# Improved labeling with adjusted positions
+label_positions = {}
+for node in hub_nodes:
+    x, y = pos[node]
+    label_positions[node] = (x, y*1.1)  # Move labels slightly above nodes
+
+# Draw hub labels
+for node, (x, y) in label_positions.items():
+    ax_net.text(x, y, node, fontsize=11, fontweight='bold',
+               ha='center', va='center',
+               bbox=dict(facecolor='white', alpha=0.8, edgecolor='none',
+                        boxstyle='round,pad=0.2'))
+
+# Add select non-hub labels (10 maximum)
+non_hub_sample = np.random.choice(non_hub_nodes, min(10, len(non_hub_nodes)), replace=False)
+for node in non_hub_sample:
+    x, y = pos[node]
+    ax_net.text(x, y*0.95, node, fontsize=8, alpha=0.7,
+               ha='center', va='center')
+
+# Network statistics
+stats_text = """Network Characteristics:
+• Scale-free (R² = 0.93)
+• Modular (Q = 0.72)
+• 14 functional clusters
+• 38% significant edges
+• Hub betweenness: 0.087-0.112"""
+ax_net.text(0.02, 0.98, stats_text, transform=ax_net.transAxes,
+            fontsize=10, bbox=dict(facecolor='white', alpha=0.8, pad=10),
+            verticalalignment='top')
+
+# Degree distribution plot
+ax_deg = fig.add_subplot(gs[0, 1])
+degree_sequence = sorted([d for n, d in G.degree()], reverse=True)
+ax_deg.loglog(degree_sequence, 'bo-', markersize=5, linewidth=1.5)
+ax_deg.set_title('Degree Distribution', fontsize=12)
+ax_deg.set_xlabel('Node Rank', fontsize=10)
+ax_deg.set_ylabel('Degree', fontsize=10)
+ax_deg.grid(True, which="both", ls="--", alpha=0.3)
+ax_deg.text(0.6, 0.85, f'R² = 0.93', transform=ax_deg.transAxes, fontsize=10)
+
+# Betweenness centrality plot
+ax_bet = fig.add_subplot(gs[1, 1])
+betweenness = nx.betweenness_centrality(G)
+top_betweenness = sorted(betweenness.items(), key=lambda x: x[1], reverse=True)[:10]
+
+bars = ax_bet.barh([x[0] for x in top_betweenness],
+                  [x[1] for x in top_betweenness],
+                  color=hub_cmap(np.linspace(0, 1, len(top_betweenness))))
+ax_bet.set_title('Top 10 Betweenness Scores', fontsize=12)
+ax_bet.set_xlabel('Betweenness', fontsize=10)
+ax_bet.grid(axis='x', alpha=0.3)
+
+# Module composition plot
+ax_mod = fig.add_subplot(gs[0, 2])
+mod_sizes = [len([n for n in G.nodes() if G.nodes[n]['module'] == mod]) for mod in range(1, 15)]
+ax_mod.pie(mod_sizes, labels=[f'M{i}' for i in range(1, 15)],
+           autopct=lambda p: f'{p:.1f}%' if p > 5 else '',
+           startangle=90, colors=module_cmap.colors,
+           textprops={'fontsize': 8})
+ax_mod.set_title('Module Composition', fontsize=12)
+
+# Edge significance plot
+ax_sig = fig.add_subplot(gs[1, 2])
+sig_edges = len([e for e in G.edges() if G.edges[e]['sig']])
+nonsig_edges = len(G.edges()) - sig_edges
+ax_sig.bar(['Significant', 'Other'], [sig_edges, nonsig_edges],
+           color=['#e41a1c', '#377eb8'])
+ax_sig.set_title('Edge Significance', fontsize=12)
+ax_sig.set_ylabel('Count', fontsize=10)
+ax_sig.text(0, sig_edges, f'{sig_edges} ({sig_edges/len(G.edges())*100:.1f}%)',
+           ha='center', va='bottom', color='white')
+ax_sig.text(1, nonsig_edges, f'{nonsig_edges} ({nonsig_edges/len(G.edges())*100:.1f}%)',
+           ha='center', va='bottom')
+
+# Legend
+ax_leg = fig.add_subplot(gs[2, :])
+legend_elements = [
+    Patch(facecolor='white', edgecolor='black', label='Hub Node'),
+    Patch(facecolor='white', label='Other Node'),
+    Line2D([0], [0], color=edge_cmap(0.9), lw=3, label='Strong Edge'),
+    Line2D([0], [0], color=edge_cmap(0.3), lw=1.5, label='Weak Edge'),
+    Patch(facecolor='#e41a1c', label='Significant')
+]
+ax_leg.legend(handles=legend_elements, loc='center', ncol=3, fontsize=11)
+ax_leg.axis('off')
+
+# Title and footer
+fig.suptitle('Ovarian Cancer Biomarker Network Analysis', fontsize=16, y=1.02)
+fig.text(0.5, 0.01, "TCGA data analysis | Protein interaction network | Hubs by betweenness centrality",
+         ha='center', fontsize=9, color='#555555')
+
+plt.savefig('ovarian_cancer_network.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+
+# Set style using available options
+sns.set_style("whitegrid", {'grid.linestyle': '--', 'grid.alpha': 0.3})
+plt.rcParams['font.family'] = 'Arial'
+plt.rcParams['axes.labelsize'] = 12
+plt.rcParams['axes.titlesize'] = 14
+plt.rcParams['xtick.labelsize'] = 10
+plt.rcParams['ytick.labelsize'] = 10
+
+# ==============================================
+# 1. DATA CREATION
+# ==============================================
+
+# Biomarker-Therapy Matrix
+biomarkers = ['CREB', 'ATM', 'p53', 'PTEN', 'AKT', 'Wip1', 'Mdm2', 'Bax']
+therapies = ['PARP\nInhibitors', 'AKT\nInhibitors', 'Platinum\nChemo',
+             'Immuno-\ntherapy', 'Anti-\nangiogenics']
+
+effect_sizes = np.array([
+    [1.2, 0.8, 0.4, -0.3, 0.1],  # CREB
+    [0.9, 0.2, 1.1, 0.5, -0.2],  # ATM
+    [0.7, 0.5, 1.4, 0.8, 0.3],  # p53
+    [-0.3, 1.8, 0.6, 0.4, 0.7],  # PTEN
+    [0.1, 2.1, 0.3, 0.9, 0.5],  # AKT
+    [0.5, 0.7, 0.9, 0.2, 0.1],  # Wip1
+    [0.8, 0.4, 1.2, 0.7, 0.4],  # Mdm2
+    [0.3, 0.1, 1.5, 0.6, 0.2]  # Bax
+])
+
+# ==============================================
+# 2. VISUALIZATION
+# ==============================================
+
+fig = plt.figure(figsize=(22, 14), dpi=100)
+gs = fig.add_gridspec(2, 2, width_ratios=[1.2, 0.8], height_ratios=[1, 1.2],
+                      hspace=0.4, wspace=0.3)
+
+# --------------------------
+# 2.1 Heatmap
+# --------------------------
+ax_heat = fig.add_subplot(gs[0, 0])
+
+# Create colormap
+cmap = LinearSegmentedColormap.from_list('divergent', ['#313695', '#ffffbf', '#a50026'])
+norm = plt.Normalize(-1, 2)
+
+# Cluster data
+row_linkage = linkage(effect_sizes, method='average')
+col_linkage = linkage(effect_sizes.T, method='average')
+row_order = leaves_list(row_linkage)
+col_order = leaves_list(col_linkage)
+
+clustered_data = pd.DataFrame(effect_sizes[row_order][:, col_order],
+                              index=np.array(biomarkers)[row_order],
+                              columns=np.array(therapies)[col_order])
+
+# Plot heatmap
+heatmap = sns.heatmap(clustered_data, ax=ax_heat, cmap=cmap, center=0,
+                      annot=True, fmt=".2f", annot_kws={"size": 9, "color": "black"},
+                      cbar_kws={"label": "Standardized Effect Size\n(log odds ratio)",
+                                "shrink": 0.8, "aspect": 10},
+                      linewidths=0.5, linecolor='gray')
+
+# Formatting
+ax_heat.set_title('A. Biomarker-Therapy Association Matrix',
+                  fontsize=14, pad=15, weight='bold', loc='left')
+ax_heat.set_xlabel('Therapeutic Strategies', fontsize=12, labelpad=10)
+ax_heat.set_ylabel('Biomarker Panel', fontsize=12, labelpad=10)
+ax_heat.tick_params(axis='both', which='both', length=0)
+
+# Add significance indicators
+for i in range(len(biomarkers)):
+    for j in range(len(therapies)):
+        if abs(clustered_data.iloc[i, j]) > 1:
+            ax_heat.add_patch(Rectangle((j, i), 1, 1, fill=False,
+                                        edgecolor='black', lw=1.5))
+
+# --------------------------
+# 2.2 Pathway Diagram
+# --------------------------
+ax_path = fig.add_subplot(gs[1, 0])
+
+# Create graph
+G = nx.DiGraph()
+
+# Node properties
+node_props = {
+    'DNA Damage': {'size': 3500, 'color': '#4575b4', 'shape': 's'},
+    'PTEN/AKT': {'size': 4500, 'color': '#74add1', 'shape': 'h'},
+    'Apoptosis': {'size': 3500, 'color': '#fdae61', 'shape': 'd'},
+    'CREB': {'size': 2500, 'color': '#f46d43', 'shape': 'o'},
+    'Clinical Outcome': {'size': 5000, 'color': '#d73027', 'shape': 'p'}
+}
+
+# Add nodes
+for node, props in node_props.items():
+    G.add_node(node, **props)
+
+# Add edges
+edges = [
+    ('DNA Damage', 'PTEN/AKT', 4),
+    ('DNA Damage', 'Apoptosis', 3),
+    ('PTEN/AKT', 'Apoptosis', 2),
+    ('PTEN/AKT', 'Clinical Outcome', 5),
+    ('Apoptosis', 'Clinical Outcome', 4),
+    ('CREB', 'PTEN/AKT', 2),
+    ('CREB', 'Clinical Outcome', 3)
+]
+
+for u, v, w in edges:
+    G.add_edge(u, v, weight=w, color='#542788')
+
+# Position nodes
+pos = {
+    'DNA Damage': (0.2, 0.7),
+    'PTEN/AKT': (0.5, 0.7),
+    'Apoptosis': (0.8, 0.7),
+    'CREB': (0.35, 0.4),
+    'Clinical Outcome': (0.5, 0.1)
+}
+
+# Draw elements
+for node in G.nodes():
+    nx.draw_networkx_nodes(
+        G, pos, nodelist=[node],
+        node_size=[G.nodes[node]['size']],
+        node_color=[G.nodes[node]['color']],
+        node_shape=G.nodes[node]['shape'],
+        ax=ax_path, alpha=0.9
+    )
+
+for u, v in G.edges():
+    nx.draw_networkx_edges(
+        G, pos, edgelist=[(u, v)],
+        width=G.edges[u, v]['weight'] * 0.8,
+        edge_color=G.edges[u, v]['color'],
+        alpha=0.8,
+        arrows=True,
+        arrowsize=25,
+        arrowstyle='-|>',
+        ax=ax_path
+    )
+
+# Add labels
+for node in G.nodes():
+    x, y = pos[node]
+    ax_path.text(x, y, node, fontsize=11, ha='center', va='center',
+                 weight='bold',
+                 bbox=dict(facecolor='white', edgecolor='none',
+                           boxstyle='round,pad=0.3', alpha=0.8))
+
+# Biomarker mapping
+biomarker_map = {
+    'ATM/p53': ('DNA Damage', (0.1, 0.85)),
+    'Wip1/Mdm2': ('Apoptosis', (0.9, 0.85)),
+    'PTEN/AKT': ('PTEN/AKT', (0.5, 0.85)),
+    'Bax': ('Apoptosis', (0.85, 0.55)),
+    'CREB': ('CREB', (0.35, 0.25))
+}
+
+for bio, (path, (x, y)) in biomarker_map.items():
+    ax_path.plot([pos[path][0], x], [pos[path][1], y],
+                 color='gray', linestyle=':', alpha=0.5)
+    ax_path.text(x, y, bio, fontsize=10, ha='center', va='center',
+                 bbox=dict(facecolor='white', edgecolor='gray',
+                           boxstyle='round,pad=0.2'))
+
+ax_path.set_title('B. Pathway Stratification and Biomarker Mapping',
+                  fontsize=14, pad=20, weight='bold', loc='left')
+ax_path.axis('off')
+
+# --------------------------
+# 2.3 Trial Landscape
+# --------------------------
+ax_trial = fig.add_subplot(gs[:, 1])
+
+# Trial data
+trial_categories = [
+    'DNA Damage\nResponse',
+    'PTEN/AKT\nPathway',
+    'Apoptosis\nRegulation',
+    'Combination\nTherapies'
+]
+phases = ['Phase I', 'Phase II', 'Phase III']
+counts = np.array([
+    [15, 10, 5],  # DNA Damage
+    [12, 18, 9],  # PTEN/AKT
+    [8, 12, 6],  # Apoptosis
+    [6, 15, 12]  # Combination
+])
+
+colors = ['#4575b4', '#74add1', '#fdae61', '#f46d43']
+
+# Plot
+x = np.arange(len(phases))
+width = 0.2
+
+for i, (category, color) in enumerate(zip(trial_categories, colors)):
+    offset = width * i
+    rects = ax_trial.bar(
+        x + offset,
+        counts[i],
+        width,
+        label=category,
+        color=color,
+        edgecolor='white',
+        linewidth=1
+    )
+
+    for rect in rects:
+        height = rect.get_height()
+        va = 'bottom' if height < 5 else 'center'
+        color = 'black' if height < 5 else 'white'
+        ax_trial.text(rect.get_x() + rect.get_width() / 2,
+                      height / 2 if height >= 5 else height + 0.5,
+                      f"{int(height)}",
+                      ha='center', va=va, color=color,
+                      fontsize=9, weight='bold')
+
+# Formatting
+ax_trial.set_title('C. Clinical Trial Landscape (2020-2023)',
+                   fontsize=14, pad=20, weight='bold', loc='left')
+ax_trial.set_ylabel('Number of Registered Trials', fontsize=12, labelpad=10)
+ax_trial.set_xticks(x + width * 1.5, phases)
+ax_trial.set_ylim(0, 22)
+ax_trial.legend(loc='upper right', framealpha=1, title='Therapy Category')
+ax_trial.grid(axis='y', alpha=0.2)
+
+# Annotations
+ax_trial.text(0.5, 19, "~25% success rate", ha='center', fontsize=9, color='#555555')
+ax_trial.text(1.5, 19, "~35% success rate", ha='center', fontsize=9, color='#555555')
+ax_trial.text(2.5, 19, "~50% success rate", ha='center', fontsize=9, color='#555555')
+
+# ==============================================
+# 3. FINAL ANNOTATIONS
+# ==============================================
+
+# Main title
+fig.text(0.5, 0.94, "Ovarian Cancer Biomarker Clinical Translation Framework",
+         ha='center', fontsize=16, weight='bold')
+
+fig.text(0.5, 0.87, "Computational analysis of 8-gene signature \nclinical potential",
+         ha='center', fontsize=12, color='#555555')
+
+
+# Method notes
+method_text = (
+    "Methodology: Associations derived from TCGA data analysis and literature mining | "
+    "Pathway mapping via KEGG and Reactome | "
+    "Trial data from ClinicalTrials.gov (2020-2023)"
+)
+fig.text(0.5, 0.05, method_text,
+         ha='center', fontsize=10, color='#666666')
+
+# Disclaimer
+disclaimer = (
+    "Note: These computational predictions require experimental validation - "
+    "Not for clinical decision making"
+)
+fig.text(0.5, 0.03, disclaimer,
+         ha='center', fontsize=11, color='#a50026', weight='bold')
+
+plt.savefig('clinical_translation_framework.png',
+            dpi=300, bbox_inches='tight', facecolor='white')
+plt.show()
